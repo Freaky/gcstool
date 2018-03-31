@@ -22,7 +22,7 @@ trait BitReader {
 
 struct BitBufReader<T: io::Read> {
 	io: T,
-	byte: u8,
+	buf: [u8; 1],
 	mask: u8
 }
 
@@ -87,8 +87,8 @@ impl<T: io::Read> BitBufReader<T> {
 	pub fn new(io: T) -> BitBufReader<T> {
 		BitBufReader {
 			io: io,
-			byte: 0,
-			mask: 1
+			buf: [0],
+			mask: 0
 		}
 	}
 }
@@ -96,21 +96,20 @@ impl<T: io::Read> BitBufReader<T> {
 
 impl<T: io::Read> BitReader for BitBufReader<T> {
 	fn read_bit(&mut self) -> io::Result<u8> {
-		// println!(" >> {}", bit);
-
-		if self.mask == 1 {
-			let mut buf = vec![0u8; 1];
-			try!(self.io.read_exact(&mut buf));
-			self.byte = buf[0];
-			// try!(self.io.read_exact(&mut [self.byte]));
-			// println!("read byte {}", self.byte);
+		if self.mask == 0 {
+			try!(self.io.read_exact(&mut self.buf));
 			self.mask = 128;
 		}
 
-		let bit = if self.mask & self.byte > 0 { 1 } else { 0 };
-		// println!(" << {}", bit);
+		let bit = if self.mask & self.buf[0] > 0 { 1 } else { 0 };
 
-		self.mask >>= 1;
+		if self.mask == 1 {   // MSB 0
+			self.mask = 0;
+		} else {
+			self.mask >>= 1; // MSB 0
+		}
+
+		// println!(" << {}", bit);
 
 		Ok(bit)
 	}
@@ -125,7 +124,8 @@ impl<T: io::Read> BitReader for BitBufReader<T> {
 		for i in 0..nbits {
 			let bit = try!(self.read_bit()) as u64;
 			// println!("bit {}: {}", i, bit);
-			bits += (1 << ((nbits - i) - 1)) * bit;
+			// bits += (1 << i) * bit;  // LSB 0
+			bits += (1 << (nbits - i - 1)) * bit; // MSB 0
 		}
 
 		Ok(bits)
@@ -147,16 +147,18 @@ impl<T: BitWriter> GolombEncoder<T> {
 		}
 	}
 
-	fn encode(&mut self, val: u64) {
+	fn encode(&mut self, val: u64) -> io::Result<()> {
 		let q:u64 = val / self.p;
 		let r:u64 = val % self.p;
 
-		self.out.write_bits((q + 1) as u8, ((1 << (q + 1)) - 2)).expect("write failed");
-		self.out.write_bits(self.log2p, r).expect("write failed");
+		try!(self.out.write_bits((q + 1) as u8, ((1 << (q + 1)) - 2)));
+		try!(self.out.write_bits(self.log2p, r));
+
+		Ok(())
 	}
 
-	fn finish(&mut self) {
-		self.out.flush().expect("flush failed");
+	fn finish(&mut self) -> io::Result<()> {
+		self.out.flush()
 	}
 }
 
@@ -165,7 +167,6 @@ struct GCSBuilder<T: BitWriter> {
 	n: u64,
 	p: u64,
 	values: Vec<u64>,
-	last: u64,
 }
 
 impl<T: BitWriter> GCSBuilder<T> {
@@ -175,7 +176,6 @@ impl<T: BitWriter> GCSBuilder<T> {
 			n: n,
 			p: p,
 			values: Vec::with_capacity(n as usize),
-			last: 0
 		}
 	}
 
@@ -185,22 +185,21 @@ impl<T: BitWriter> GCSBuilder<T> {
 		self.values.push(h);
 	}
 
-	fn finish(&mut self) {
+	fn finish(&mut self) -> io::Result<()> {
 		self.values.sort_unstable();
 
 		let mut diff: u64;
 		let mut last: u64 = 0;
 		for v in &self.values {
-			println!(" >> {}", v);
 			diff = v - last;
 			last = *v;
 
 			if diff > 0 {
-				self.encoder.encode(diff);
+				try!(self.encoder.encode(diff));
 			}
 		}
 
-		self.encoder.finish();
+		self.encoder.finish()
 	}
 }
 
@@ -245,24 +244,23 @@ impl<T: BitReader> GCSReader<T> {
 	}
 
 	fn next(&mut self) -> io::Result<u64> {
-		let mut v = try!(self.decoder.next());
-
-		v = self.last + v;
-		self.last = v;
-		Ok(v)
+		let v = try!(self.decoder.next());
+		self.last = self.last + v;
+		Ok(self.last)
 	}
 }
 
 use std::{thread, time};
+use std::time::Instant;
 
 const INPUT_BUFFER_SIZE: usize = 1024 * 1024;
-const FALSE_POSITIVE_RATE: u64 = 50_000_000;
+const FALSE_POSITIVE_RATE: u64 = 10_000_000;
 
-fn count_lines<R: BufRead + std::io::Seek>(mut inp: R) -> u64 {
+fn count_lines<R: BufRead + std::io::Seek>(mut inp: R) -> io::Result<u64> {
 	let mut buffer: Vec<u8> = vec![0; INPUT_BUFFER_SIZE];
 	let mut n: u64 = 0;
 	loop {
-		let len = inp.read(&mut buffer[0..INPUT_BUFFER_SIZE]).expect("read error");
+		let len = try!(inp.read(&mut buffer[0..INPUT_BUFFER_SIZE]));
 		if len == 0 {
 			break;
 		}
@@ -270,12 +268,12 @@ fn count_lines<R: BufRead + std::io::Seek>(mut inp: R) -> u64 {
 		n += bytecount::count(&buffer, b'\n') as u64;
 	}
 
-	inp.seek(SeekFrom::Start(0)).expect("seek error");
-	n
+	try!(inp.seek(SeekFrom::Start(0)));
+
+	Ok(n)
 }
-/*
-fn test(out_filename: String) {
-	let test_in = File::open(out_filename).expect("can't open database");
+
+fn test<R: io::Read>(test_in: R, fp: u64) {
 	let test_inbuf = BufReader::new(test_in);
 	let test_bitreader = BitBufReader::new(test_inbuf);
 	let mut decoder = GCSReader::new(test_bitreader, fp);
@@ -288,69 +286,70 @@ fn test(out_filename: String) {
 		}
 	}
 }
-*/
+
+
+fn build_gcs<R: io::Read + std::io::Seek, W: io::Write>(infile: R, outfile: W, fp: u64) {
+	let mut buf_in = BufReader::new(infile);
+
+	println!("Counting items");
+
+	let n = count_lines(&mut buf_in).unwrap();
+
+	println!("Counted {} items", n);
+
+	println!("Approx memory use: {} MB.", (n * 8) / (1024 * 1024));
+	if n > 1000 * 1000 {
+		println!("^C now and get a better computer if memory constrained");
+		thread::sleep(time::Duration::from_millis(4000));
+	}
+
+	println!("Building Golomb Compressed Set");
+
+	let buf_out = BufWriter::new(outfile);
+
+	let start = Instant::now();
+
+	let mut count = 0;
+	let bitwriter = BitBufWriter::new(buf_out);
+	let mut gcs = GCSBuilder::new(bitwriter, n, fp);
+	for line in buf_in.lines() {
+		gcs.add(line.unwrap()); // .expect("Error adding item to GCS builder");
+
+		count += 1;
+		if count % 10_000_000 == 0 {
+			println!(" >> {} of {}, {:.1}% ({}/sec)",
+			         count, n, (count as f64 / n as f64) * 100.0, count / start.elapsed().as_secs());
+		}
+	}
+
+	println!("Writing out GCS");
+	gcs.finish().expect("Error writing GCS");
+	println!("Done in {} seconds", start.elapsed().as_secs());
+}
+
 fn main() {
 	let args: Vec<String> = env::args().collect();
-
-	if args.len() < 3 {
-		println!("Usage: {} infile outfile", args[0]);
-		std::process::exit(1);
-	}
-	let in_filename = &args[1];
-	let out_filename = &args[2];
 	let fp = FALSE_POSITIVE_RATE;
 
-	{
-		let mut infile = File::open(in_filename).expect("can't open input");
-		let outfile = File::create(out_filename).expect("can't open output");
-		let mut buf_in = BufReader::new(infile);
+	match args.len() {
+		3 => {
+			let in_filename = &args[1];
+			let out_filename = &args[2];
 
-		println!("Counting items in {}", in_filename);
+			let infile = File::open(in_filename).expect("can't open input");
+			let outfile = File::create(out_filename).expect("can't open output");
 
-		let n = count_lines(&mut buf_in);
+			build_gcs(infile, outfile, fp);
+		},
+		2 => {
+			let filename = &args[1];
 
-		println!("Counted {} items", n);
-
-		println!("Approx memory use: {} MB.", (n * 8) / (1024 * 1024));
-		if n > 1000 * 1000 {
-			println!("^C now and get a better computer if memory constrained");
-			thread::sleep(time::Duration::from_millis(4000));
+			let outfile = File::open(filename).expect("can't open input");
+			test(outfile, fp);
 		}
-
-		println!("Building Golomb Compressed Set in {}", out_filename);
-
-		let buf_out = BufWriter::new(outfile);
-
-		buf_in.seek(SeekFrom::Start(0)).expect("seek error");
-
-
-		let mut count = 0;
-		let bitwriter = BitBufWriter::new(buf_out);
-		{
-			let mut gcs = GCSBuilder::new(bitwriter, n, fp);
-			for line in buf_in.lines() {
-				gcs.add(line.unwrap());
-
-				count += 1;
-				if count % 10_000_000 == 0 {
-					println!(" >> {} of {}, {:.1}%", count, n, (count as f64 / n as f64) * 100.0);
-				}
-			}
-			gcs.finish();
+		_ => {
+			println!("Usage: {} infile outfile", args[0]);
+			std::process::exit(1);
 		}
 	}
-
-	let test_in = File::open(out_filename).expect("can't open database");
-	let test_inbuf = BufReader::new(test_in);
-	let test_bitreader = BitBufReader::new(test_inbuf);
-	let mut decoder = GCSReader::new(test_bitreader, fp);
-
-	loop {
-		let v = decoder.next();
-		match v {
-			Ok(v) => println!(" << {}", v),
-			_ => break
-		}
-	}
-	
 }
