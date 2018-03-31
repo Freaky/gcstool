@@ -2,16 +2,19 @@
 use std::env;
 use std::io;
 use std::io::prelude::*;
+use std::io::SeekFrom;
 use std::io::BufReader;
 use std::io::BufWriter;
 use std::fs::File;
 
-pub trait BitWriter {
+extern crate bytecount;
+
+trait BitWriter {
 	fn write_bits(&mut self, nbits: u8, value: u64) -> io::Result<()>;
 	fn flush(&mut self) -> io::Result<()>;
 }
 
-pub struct BitBuffer<T: io::Write> {
+struct BitBuffer<T: io::Write> {
 	out: T,
 	byte: u8,
 	mask: u8,
@@ -60,7 +63,7 @@ impl<T: io::Write> BitWriter for BitBuffer<T> {
 	}
 }
 
-struct GolombEncoder<T: BitWriter> {
+struct GolombEncoder<T> {
 	out: T,
 	p: u64,
 	n: u64,
@@ -69,7 +72,7 @@ struct GolombEncoder<T: BitWriter> {
 
 impl<T: BitWriter> GolombEncoder<T> {
 	fn new(out: T, n: u64, p: u64) -> GolombEncoder<T> {
-		GolombEncoder {
+		GolombEncoder::<T> {
 			out: out,
 			n: n,
 			p: p,
@@ -90,37 +93,37 @@ impl<T: BitWriter> GolombEncoder<T> {
 	}
 }
 
-pub struct GCSBuilder {
-	encoder: GolombEncoder,
+struct GCSBuilder<T: BitWriter> {
+	encoder: GolombEncoder<T>,
 	n: u64,
 	p: u64,
 	values: Vec<u64>,
 }
 
-impl GCSBuilder {
-	fn new(out: io::Write, n: u64, p: u64) -> GCSBuilder {
+impl<T: BitWriter> GCSBuilder<T> {
+	fn new(out: T, n: u64, p: u64) -> GCSBuilder<T> {
 		GCSBuilder {
 			encoder: GolombEncoder::new(out, n, p),
 			n: n,
 			p: p,
-			values: vec![]
+			values: vec![0; n as usize]
 		}
 	}
 
-	fn add(&mut self, data: &[u8]) {
-		let h = u64::from_str_radix(data, 16).unwrap() % (self.n * self.p);
+	fn add(&mut self, data: std::string::String) {
+		let h = u64::from_str_radix(&data[0..16], 16).unwrap() % (self.n * self.p);
 
 		self.values.push(h);
 	}
 
-	fn finalise(&mut self) {
+	fn finish(&mut self) {
 		self.values.sort_unstable();
 
-		let mut diff: u64 = 0;
+		let mut diff: u64;
 		let mut last: u64 = 0;
-		for v in self.values {
+		for v in self.values.iter() {
 			diff = v - last;
-			last = v;
+			last = *v;
 
 			if diff > 0 {
 				self.encoder.encode(diff);
@@ -130,16 +133,9 @@ impl GCSBuilder {
 		self.encoder.finish();
 	}
 }
-/*
-fn gcs_hash(data, n, p) -> u64 {
-	u64::from_str_radix(data, 16).unwrap() % (n * p);
-}*/
-
-use std::io::SeekFrom;
-
-extern crate bytecount;
 
 const INPUT_BUFFER_SIZE: usize = 1024 * 1024;
+const FALSE_POSITIVE_RATE: u64 = 50_000_000;
 
 fn main() {
 	let args: Vec<String> = env::args().collect();
@@ -151,37 +147,39 @@ fn main() {
 	let in_filename = &args[1];
 	let out_filename = &args[2];
 
-	let mut infile = File::open(in_filename).expect("can't open input");
-	let mut outfile = File::create(out_filename).expect("can't open output");
-
-	let mut inmeta = infile.metadata;
-
+	let infile = File::open(in_filename).expect("can't open input");
+	let outfile = File::create(out_filename).expect("can't open output");
 	let mut buf_in = BufReader::new(infile);
-	let mut buf_out = BufWriter::new(outfile);
-
-	let n_bytes = infile.metadata().unwrap().len() as usize;
+	let buf_out = BufWriter::new(outfile);
 
 	println!("Counting items in {}", in_filename);
 
 	let mut buffer: Vec<u8> = vec![0; INPUT_BUFFER_SIZE];
-	let mut n: usize = 0;
+	let mut n: u64 = 0;
 	loop {
 		let len = buf_in.read(&mut buffer[0..INPUT_BUFFER_SIZE]).expect("read error");
 		if len == 0 {
 			break;
 		}
 
-		n += bytecount::count(&buffer, b'\n');
+		n += bytecount::count(&buffer, b'\n') as u64;
 	}
 	println!("Counted {} items", n);
 	println!("Building Golomb Compressed Set in {}", out_filename);
 
 	buf_in.seek(SeekFrom::Start(0)).expect("seek error");
 
-	let fp = 50_000_000;
+	let fp = FALSE_POSITIVE_RATE;
 
-	let mut gcs = GCSBuilder::new(&buf_out, n, fp);
+	let mut count = 0;
+	let bitwriter = BitBuffer::new(buf_out);
+	let mut gcs = GCSBuilder::new(bitwriter, n, fp);
 	for line in buf_in.lines() {
-
+		gcs.add(line.unwrap());
+		count += 1;
+		if count % 10_000_000 == 0 {
+			println!(" >> {} of {}, {:.1}%", count, n, (count as f64 / n as f64) * 100.0);
+		}
 	}
+	gcs.finish();
 }
