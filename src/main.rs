@@ -10,6 +10,7 @@ use std::fs::File;
 extern crate bytecount;
 
 trait BitWriter {
+	fn write_bit(&mut self, value: u8) -> io::Result<()>;
 	fn write_bits(&mut self, nbits: u8, value: u64) -> io::Result<()>;
 	fn flush(&mut self) -> io::Result<()>;
 }
@@ -25,38 +26,48 @@ impl<T: io::Write> BitBuffer<T> {
 		BitBuffer {
 			out: out,
 			byte: 0,
-			mask: 0x08
+			mask: 128
 		}
 	}
 }
 
 impl<T: io::Write> BitWriter for BitBuffer<T> {
-	fn write_bits(&mut self, nbits: u8, value: u64) -> io::Result<()> {
-		let mut mask = 1 << (nbits as u64 - 1);
-		while mask > 0 {
-			// println!("mask: {}, self mask: {}", mask, self.mask);
-			if value & mask > 0 {
-				self.byte |= self.mask;
-			}
+	fn write_bit(&mut self, bit: u8) -> io::Result<()> {
+		assert!(bit <= 1);
+		// println!(" >> {}", bit);
 
+		self.byte += self.mask * bit;
+
+		if self.mask == 1 {
+			try!(self.flush());
+		} else {
 			self.mask >>= 1;
-			mask >>= 1;
+		}
 
-			if self.mask == 0 {
-				try!(self.flush());
-			}
+		Ok(())
+	}
+
+	fn write_bits(&mut self, nbits: u8, value: u64) -> io::Result<()> {
+		let mut mask:u64 = 1 << (nbits - 1);
+		// let mut mask = 1;
+		// println!("write {} bits of: {:b}", nbits, value);
+
+		for _ in 0..nbits {
+			try!(self.write_bit(if (value & mask) > 0 { 1 } else { 0 }));
+
+			mask >>= 1
 		}
 
 		Ok(())
 	}
 
 	fn flush(&mut self) ->  io::Result<()> {
-		if self.mask == 0x80 {
+		if self.mask == 128 {
 			return Ok(());
 		}
 
-		self.mask = 0x80;
 		try!(self.out.write_all(&[self.byte]));
+		self.mask = 128;
 		self.byte = 0;
 
 		Ok(())
@@ -79,8 +90,8 @@ impl<T: BitWriter> GolombEncoder<T> {
 	}
 
 	fn encode(&mut self, val: u64) {
-		let q = val / self.p;
-		let r = val % self.p;
+		let q:u64 = val / self.p;
+		let r:u64 = val % self.p;
 
 		self.out.write_bits((q + 1) as u8, ((1 << (q + 1)) - 2)).expect("write failed");
 		self.out.write_bits(self.log2p, r).expect("write failed");
@@ -96,6 +107,7 @@ struct GCSBuilder<T: BitWriter> {
 	n: u64,
 	p: u64,
 	values: Vec<u64>,
+	last: u64,
 }
 
 impl<T: BitWriter> GCSBuilder<T> {
@@ -104,7 +116,21 @@ impl<T: BitWriter> GCSBuilder<T> {
 			encoder: GolombEncoder::new(out, p),
 			n: n,
 			p: p,
-			values: vec![0; n as usize]
+			values: vec![0; n as usize],
+			last: 0
+		}
+	}
+
+	fn add_sorted(&mut self, data: std::string::String) {
+		let h = u64::from_str_radix(&data[0..15], 16).unwrap() % (self.n * self.p);
+
+		assert!(self.last <= h);
+
+		let diff = h - self.last;
+		self.last = h;
+
+		if diff > 0 {
+			self.encoder.encode(diff);
 		}
 	}
 
@@ -131,6 +157,8 @@ impl<T: BitWriter> GCSBuilder<T> {
 		self.encoder.finish();
 	}
 }
+
+use std::thread;
 
 const INPUT_BUFFER_SIZE: usize = 1024 * 1024;
 const FALSE_POSITIVE_RATE: u64 = 50_000_000;
@@ -163,6 +191,13 @@ fn main() {
 		n += bytecount::count(&buffer, b'\n') as u64;
 	}
 	println!("Counted {} items", n);
+
+	println!("Approx memory use: {} MB.", (n * 8) / (1024 * 1024));
+	if n > 1000 * 1000 {
+		println!("^C now and rebuild using sorted mode if memory is limited.");
+		thread::sleep_ms(2000);
+	}
+
 	println!("Building Golomb Compressed Set in {}", out_filename);
 
 	buf_in.seek(SeekFrom::Start(0)).expect("seek error");
