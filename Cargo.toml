@@ -1,0 +1,8 @@
+[package]
+name = "pwned"
+version = "0.1.0"
+authors = ["Thomas Hurst <tom@hur.st>"]
+
+[dependencies]
+sha2 = "0.7.0"
+bytecount = "0.3.1"
