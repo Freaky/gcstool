@@ -66,15 +66,13 @@ impl<T: io::Write> BitWriter for BitBuffer<T> {
 struct GolombEncoder<T> {
 	out: T,
 	p: u64,
-	n: u64,
 	log2p: u8
 }
 
 impl<T: BitWriter> GolombEncoder<T> {
-	fn new(out: T, n: u64, p: u64) -> GolombEncoder<T> {
+	fn new(out: T, p: u64) -> GolombEncoder<T> {
 		GolombEncoder::<T> {
 			out: out,
-			n: n,
 			p: p,
 			log2p: (p as f64).log2().ceil().trunc() as u8
 		}
@@ -84,12 +82,12 @@ impl<T: BitWriter> GolombEncoder<T> {
 		let q = val / self.p;
 		let r = val % self.p;
 
-		self.out.write_bits((q + 1) as u8, ((1 << (q + 1)) - 2));
-		self.out.write_bits(self.log2p, r);
+		self.out.write_bits((q + 1) as u8, ((1 << (q + 1)) - 2)).expect("write failed");
+		self.out.write_bits(self.log2p, r).expect("write failed");
 	}
 
 	fn finish(&mut self) {
-		self.out.flush();
+		self.out.flush().expect("flush failed");
 	}
 }
 
@@ -103,7 +101,7 @@ struct GCSBuilder<T: BitWriter> {
 impl<T: BitWriter> GCSBuilder<T> {
 	fn new(out: T, n: u64, p: u64) -> GCSBuilder<T> {
 		GCSBuilder {
-			encoder: GolombEncoder::new(out, n, p),
+			encoder: GolombEncoder::new(out, p),
 			n: n,
 			p: p,
 			values: vec![0; n as usize]
@@ -111,7 +109,7 @@ impl<T: BitWriter> GCSBuilder<T> {
 	}
 
 	fn add(&mut self, data: std::string::String) {
-		let h = u64::from_str_radix(&data[0..16], 16).unwrap() % (self.n * self.p);
+		let h = u64::from_str_radix(&data[0..15], 16).unwrap() % (self.n * self.p);
 
 		self.values.push(h);
 	}
