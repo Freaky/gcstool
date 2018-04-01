@@ -50,7 +50,7 @@ impl<T: io::Write> BitWriter for BitBufWriter<T> {
 		self.byte += self.mask * bit;
 
 		if self.mask == 1 {
-			try!(self.flush());
+			self.flush()?;
 		} else {
 			self.mask >>= 1;
 		}
@@ -64,7 +64,7 @@ impl<T: io::Write> BitWriter for BitBufWriter<T> {
 		// println!("write {} bits of: {:b}", nbits, value);
 
 		for _ in 0..nbits {
-			try!(self.write_bit(if (value & mask) > 0 { 1 } else { 0 }));
+			self.write_bit(if (value & mask) > 0 { 1 } else { 0 })?;
 
 			mask >>= 1
 		}
@@ -74,7 +74,7 @@ impl<T: io::Write> BitWriter for BitBufWriter<T> {
 
 	fn flush(&mut self) ->  io::Result<()> {
 		if self.mask != 128 {
-			try!(self.io.write_all(&[self.byte]));
+			self.io.write_all(&[self.byte])?;
 			self.mask = 128;
 			self.byte = 0;
 		}
@@ -97,7 +97,7 @@ impl<T: io::Read> BitBufReader<T> {
 impl<T: io::Read> BitReader for BitBufReader<T> {
 	fn read_bit(&mut self) -> io::Result<u8> {
 		if self.mask == 0 {
-			try!(self.io.read_exact(&mut self.buf));
+			self.io.read_exact(&mut self.buf)?;
 			self.mask = 128;
 		}
 
@@ -122,7 +122,7 @@ impl<T: io::Read> BitReader for BitBufReader<T> {
 		let mut bits: u64 = 0;
 
 		for i in 0..nbits {
-			let bit = try!(self.read_bit()) as u64;
+			let bit = self.read_bit()? as u64;
 			// println!("bit {}: {}", i, bit);
 			// bits += (1 << i) * bit;  // LSB 0
 			bits += (1 << (nbits - i - 1)) * bit; // MSB 0
@@ -151,8 +151,8 @@ impl<T: BitWriter> GolombEncoder<T> {
 		let q:u64 = val / self.p;
 		let r:u64 = val % self.p;
 
-		try!(self.out.write_bits((q + 1) as u8, ((1 << (q + 1)) - 2)));
-		try!(self.out.write_bits(self.log2p, r));
+		self.out.write_bits((q + 1) as u8, ((1 << (q + 1)) - 2))?;
+		self.out.write_bits(self.log2p, r)?;
 
 		Ok(())
 	}
@@ -195,7 +195,7 @@ impl<T: BitWriter> GCSBuilder<T> {
 			last = *v;
 
 			if diff > 0 {
-				try!(self.encoder.encode(diff));
+				self.encoder.encode(diff)?;
 			}
 		}
 
@@ -221,11 +221,11 @@ impl<T: BitReader> GolombDecoder<T> {
 	fn next(&mut self) -> io::Result<u64> {
 		let mut v: u64 = 0;
 
-		while try!(self.reader.read_bit()) == 1 {
+		while self.reader.read_bit()? == 1 {
 			v += self.p;
 		}
 
-		v += try!(self.reader.read_bits_u64(self.log2p));
+		v += self.reader.read_bits_u64(self.log2p)?;
 		Ok(v)
 	}
 }
@@ -244,8 +244,7 @@ impl<T: BitReader> GCSReader<T> {
 	}
 
 	fn next(&mut self) -> io::Result<u64> {
-		let v = try!(self.decoder.next());
-		self.last = self.last + v;
+		self.last = self.last + self.decoder.next()?;
 		Ok(self.last)
 	}
 }
@@ -254,13 +253,13 @@ use std::{thread, time};
 use std::time::Instant;
 
 const INPUT_BUFFER_SIZE: usize = 1024 * 1024;
-const FALSE_POSITIVE_RATE: u64 = 10_000_000;
+const FALSE_POSITIVE_RATE: u64 = 10_000;
 
 fn count_lines<R: BufRead + std::io::Seek>(mut inp: R) -> io::Result<u64> {
 	let mut buffer: Vec<u8> = vec![0; INPUT_BUFFER_SIZE];
 	let mut n: u64 = 0;
 	loop {
-		let len = try!(inp.read(&mut buffer[0..INPUT_BUFFER_SIZE]));
+		let len = inp.read(&mut buffer[0..INPUT_BUFFER_SIZE])?;
 		if len == 0 {
 			break;
 		}
@@ -268,7 +267,7 @@ fn count_lines<R: BufRead + std::io::Seek>(mut inp: R) -> io::Result<u64> {
 		n += bytecount::count(&buffer, b'\n') as u64;
 	}
 
-	try!(inp.seek(SeekFrom::Start(0)));
+	inp.seek(SeekFrom::Start(0))?;
 
 	Ok(n)
 }
@@ -278,10 +277,17 @@ fn test<R: io::Read>(test_in: R, fp: u64) {
 	let test_bitreader = BitBufReader::new(test_inbuf);
 	let mut decoder = GCSReader::new(test_bitreader, fp);
 
+	let mut last = 0;
 	loop {
 		let v = decoder.next();
 		match v {
-			Ok(v) => println!(" << {}", v),
+			Ok(v) => {
+				if last >= v {
+					println!("Dodgy value: {} => {}", last, v);
+				}
+				last = v;
+				// println!(" << {}", v),
+			}
 			_ => break
 		}
 	}
