@@ -1,4 +1,3 @@
-
 use std::env;
 use std::io;
 use std::io::prelude::*;
@@ -23,7 +22,7 @@ trait BitReader {
 struct BitBufReader<T: io::Read> {
 	io: T,
 	buf: [u8; 1],
-	mask: u8
+	mask: u8,
 }
 
 struct BitBufWriter<T: io::Write> {
@@ -37,7 +36,7 @@ impl<T: io::Write> BitBufWriter<T> {
 		BitBufWriter {
 			io: io,
 			byte: 0,
-			mask: 128
+			mask: 128,
 		}
 	}
 }
@@ -59,7 +58,7 @@ impl<T: io::Write> BitWriter for BitBufWriter<T> {
 	}
 
 	fn write_bits(&mut self, nbits: u8, value: u64) -> io::Result<()> {
-		let mut mask:u64 = 1 << (nbits - 1);
+		let mut mask: u64 = 1 << (nbits - 1);
 		// let mut mask = 1;
 		// println!("write {} bits of: {:b}", nbits, value);
 
@@ -72,7 +71,7 @@ impl<T: io::Write> BitWriter for BitBufWriter<T> {
 		Ok(())
 	}
 
-	fn flush(&mut self) ->  io::Result<()> {
+	fn flush(&mut self) -> io::Result<()> {
 		if self.mask != 128 {
 			self.io.write_all(&[self.byte])?;
 			self.mask = 128;
@@ -88,11 +87,10 @@ impl<T: io::Read> BitBufReader<T> {
 		BitBufReader {
 			io: io,
 			buf: [0],
-			mask: 0
+			mask: 0,
 		}
 	}
 }
-
 
 impl<T: io::Read> BitReader for BitBufReader<T> {
 	fn read_bit(&mut self) -> io::Result<u8> {
@@ -103,7 +101,8 @@ impl<T: io::Read> BitReader for BitBufReader<T> {
 
 		let bit = if self.mask & self.buf[0] > 0 { 1 } else { 0 };
 
-		if self.mask == 1 {   // MSB 0
+		if self.mask == 1 {
+			// MSB 0
 			self.mask = 0;
 		} else {
 			self.mask >>= 1; // MSB 0
@@ -135,7 +134,7 @@ impl<T: io::Read> BitReader for BitBufReader<T> {
 struct GolombEncoder<T> {
 	out: T,
 	p: u64,
-	log2p: u8
+	log2p: u8,
 }
 
 impl<T: BitWriter> GolombEncoder<T> {
@@ -143,13 +142,13 @@ impl<T: BitWriter> GolombEncoder<T> {
 		GolombEncoder::<T> {
 			out: out,
 			p: p,
-			log2p: (p as f64).log2().ceil().trunc() as u8
+			log2p: (p as f64).log2().ceil().trunc() as u8,
 		}
 	}
 
 	fn encode(&mut self, val: u64) -> io::Result<()> {
-		let q:u64 = val / self.p;
-		let r:u64 = val % self.p;
+		let q: u64 = val / self.p;
+		let r: u64 = val % self.p;
 
 		self.out.write_bits((q + 1) as u8, ((1 << (q + 1)) - 2))?;
 		self.out.write_bits(self.log2p, r)?;
@@ -206,7 +205,7 @@ impl<T: BitWriter> GCSBuilder<T> {
 struct GolombDecoder<T> {
 	reader: T,
 	p: u64,
-	log2p: u8
+	log2p: u8,
 }
 
 impl<T: BitReader> GolombDecoder<T> {
@@ -214,7 +213,7 @@ impl<T: BitReader> GolombDecoder<T> {
 		GolombDecoder::<T> {
 			reader: reader,
 			p: p,
-			log2p: (p as f64).log2().ceil().trunc() as u8
+			log2p: (p as f64).log2().ceil().trunc() as u8,
 		}
 	}
 
@@ -232,14 +231,14 @@ impl<T: BitReader> GolombDecoder<T> {
 
 struct GCSReader<T> {
 	decoder: GolombDecoder<T>,
-	last: u64
+	last: u64,
 }
 
 impl<T: BitReader> GCSReader<T> {
 	fn new(reader: T, p: u64) -> GCSReader<T> {
 		GCSReader {
 			decoder: GolombDecoder::new(reader, p),
-			last: 0
+			last: 0,
 		}
 	}
 
@@ -288,11 +287,10 @@ fn test<R: io::Read>(test_in: R, fp: u64) {
 				last = v;
 				// println!(" << {}", v),
 			}
-			_ => break
+			_ => break,
 		}
 	}
 }
-
 
 fn build_gcs<R: io::Read + std::io::Seek, W: io::Write>(infile: R, outfile: W, fp: u64) {
 	let mut buf_in = BufReader::new(infile);
@@ -323,8 +321,13 @@ fn build_gcs<R: io::Read + std::io::Seek, W: io::Write>(infile: R, outfile: W, f
 
 		count += 1;
 		if count % 10_000_000 == 0 {
-			println!(" >> {} of {}, {:.1}% ({}/sec)",
-			         count, n, (count as f64 / n as f64) * 100.0, count / start.elapsed().as_secs());
+			println!(
+				" >> {} of {}, {:.1}% ({}/sec)",
+				count,
+				n,
+				(count as f64 / n as f64) * 100.0,
+				count / start.elapsed().as_secs()
+			);
 		}
 	}
 
@@ -346,7 +349,7 @@ fn main() {
 			let outfile = File::create(out_filename).expect("can't open output");
 
 			build_gcs(infile, outfile, fp);
-		},
+		}
 		2 => {
 			let filename = &args[1];
 
