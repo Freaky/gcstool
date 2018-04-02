@@ -26,14 +26,16 @@ impl<T: BitWriter> GolombEncoder<T> {
 		}
 	}
 
-	fn encode(&mut self, val: u64) -> io::Result<()> {
+	fn encode(&mut self, val: u64) -> io::Result<usize> {
 		let q: u64 = val / self.p;
 		let r: u64 = val % self.p;
 
-		self.out.write_bits((q + 1) as u8, ((1 << (q + 1)) - 2))?;
-		self.out.write_bits(self.log2p, r)?;
+		let mut written = 0;
 
-		Ok(())
+		written += self.out.write_bits((q + 1) as u8, ((1 << (q + 1)) - 2))?;
+		written += self.out.write_bits(self.log2p, r)?;
+
+		Ok(written)
 	}
 
 	fn finish(&mut self) -> io::Result<()> {
@@ -45,16 +47,21 @@ struct GCSBuilder<T: BitWriter> {
 	encoder: GolombEncoder<T>,
 	n: u64,
 	p: u64,
+	index_granularity: usize,
 	values: Vec<u64>,
 }
 
 impl<T: BitWriter> GCSBuilder<T> {
-	fn new(out: T, n: u64, p: u64) -> GCSBuilder<T> {
-		GCSBuilder {
-			encoder: GolombEncoder::new(out, p),
-			n: n,
-			p: p,
-			values: Vec::with_capacity(n as usize),
+	fn new(out: T, n: u64, p: u64, index_granularity: u64) -> Result<GCSBuilder<T>, &'static str> {
+		match n.checked_mul(p) {
+			Some(_) => Ok(GCSBuilder {
+				encoder: GolombEncoder::new(out, p),
+				n: n,
+				p: p,
+				index_granularity: index_granularity as usize,
+				values: Vec::with_capacity(n as usize),
+			}),
+			None => Err("n*p must fit in u64")
 		}
 	}
 
@@ -66,17 +73,32 @@ impl<T: BitWriter> GCSBuilder<T> {
 
 	fn finish(&mut self) -> io::Result<()> {
 		self.values.sort_unstable();
+		self.values.dedup();
+
+		let index_points = self.values.len() / self.index_granularity;
+
+		// v => bit position
+		let mut positions: Vec<(usize, usize)> = Vec::with_capacity(index_points);
 
 		let mut diff: u64;
 		let mut last: u64 = 0;
-		for v in &self.values {
+		let mut total_bits: usize = 0;
+
+		for (i, v) in self.values.iter().enumerate() {
 			diff = v - last;
 			last = *v;
 
-			if diff > 0 {
-				self.encoder.encode(diff)?;
+			let bits_written = self.encoder.encode(diff)?;
+
+			if self.index_granularity > 0 && (i + 1) % self.index_granularity == 0 {
+				positions.push((i, total_bits));
 			}
+
+			total_bits += bits_written;
 		}
+
+		println!("Total bits written: {}", total_bits);
+		println!("Index entries: {}", positions.len());
 
 		self.encoder.finish()
 	}
@@ -132,7 +154,8 @@ use std::{thread, time};
 use std::time::Instant;
 
 const INPUT_BUFFER_SIZE: usize = 1024 * 1024;
-const FALSE_POSITIVE_RATE: u64 = 10_000_000;
+const FALSE_POSITIVE_RATE: u64 = 100; // 10_000_000;
+const INDEX_GRANULARITY: u64 = 512;
 
 fn count_lines<R: BufRead + std::io::Seek>(mut inp: R) -> io::Result<u64> {
 	let mut buffer: Vec<u8> = vec![0; INPUT_BUFFER_SIZE];
@@ -172,7 +195,7 @@ fn test<R: io::Read>(test_in: R, fp: u64) {
 	}
 }
 
-fn build_gcs<R: io::Read + std::io::Seek, W: io::Write>(infile: R, outfile: W, fp: u64) {
+fn build_gcs<R: io::Read + std::io::Seek, W: io::Write>(infile: R, outfile: W, fp: u64, index_granularity: u64) {
 	let mut buf_in = BufReader::new(infile);
 
 	println!("Counting items");
@@ -195,7 +218,7 @@ fn build_gcs<R: io::Read + std::io::Seek, W: io::Write>(infile: R, outfile: W, f
 
 	let mut count = 0;
 	let bitwriter = BitBufWriter::new(buf_out);
-	let mut gcs = GCSBuilder::new(bitwriter, n, fp);
+	let mut gcs = GCSBuilder::new(bitwriter, n, fp, index_granularity).unwrap();
 	for line in buf_in.lines() {
 		gcs.add(line.unwrap()); // .expect("Error adding item to GCS builder");
 
@@ -219,6 +242,7 @@ fn build_gcs<R: io::Read + std::io::Seek, W: io::Write>(infile: R, outfile: W, f
 fn main() {
 	let args: Vec<String> = env::args().collect();
 	let fp = FALSE_POSITIVE_RATE;
+	let index_gran = INDEX_GRANULARITY;
 
 	match args.len() {
 		3 => {
@@ -228,7 +252,7 @@ fn main() {
 			let infile = File::open(in_filename).expect("can't open input");
 			let outfile = File::create(out_filename).expect("can't open output");
 
-			build_gcs(infile, outfile, fp);
+			build_gcs(infile, outfile, fp, index_gran);
 		}
 		2 => {
 			let filename = &args[1];

@@ -63,7 +63,7 @@ impl<T: io::Read> BitReader for BitBufReader<T> {
 
 pub trait BitWriter {
 	fn write_bit(&mut self, value: u8) -> io::Result<()>;
-	fn write_bits(&mut self, nbits: u8, value: u64) -> io::Result<()>;
+	fn write_bits(&mut self, nbits: u8, value: u64) -> io::Result<(usize)>;
 	fn flush(&mut self) -> io::Result<()>;
 }
 
@@ -98,7 +98,7 @@ impl<T: io::Write> BitWriter for BitBufWriter<T> {
 		Ok(())
 	}
 
-	fn write_bits(&mut self, nbits: u8, value: u64) -> io::Result<()> {
+	fn write_bits(&mut self, nbits: u8, value: u64) -> io::Result<usize> {
 		let mut mask: u64 = 1 << (nbits - 1);
 
 		for _ in 0..nbits {
@@ -107,7 +107,7 @@ impl<T: io::Write> BitWriter for BitBufWriter<T> {
 			mask >>= 1
 		}
 
-		Ok(())
+		Ok(nbits as usize)
 	}
 
 	fn flush(&mut self) -> io::Result<()> {
