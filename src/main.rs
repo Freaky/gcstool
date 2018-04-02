@@ -2,25 +2,29 @@ use std::env;
 use std::io;
 use std::io::prelude::*;
 use std::io::SeekFrom;
-use std::io::BufReader;
-use std::io::BufWriter;
+use std::io::{BufReader,BufWriter};
 use std::fs::File;
+use std::{thread, time};
+use std::time::Instant;
 
 extern crate bytecount;
+extern crate byteorder;
+
+use byteorder::{BigEndian, WriteBytesExt};
 
 mod bitio;
 use bitio::*;
 
-struct GolombEncoder<T> {
-	out: T,
+struct GolombEncoder<T: io::Write> {
+	out: BitBufWriter<T>,
 	p: u64,
 	log2p: u8,
 }
 
-impl<T: BitWriter> GolombEncoder<T> {
+impl<T: io::Write> GolombEncoder<T> {
 	fn new(out: T, p: u64) -> GolombEncoder<T> {
 		GolombEncoder::<T> {
-			out: out,
+			out: BitBufWriter::new(out),
 			p: p,
 			log2p: (p as f64).log2().ceil().trunc() as u8,
 		}
@@ -43,7 +47,7 @@ impl<T: BitWriter> GolombEncoder<T> {
 	}
 }
 
-struct GCSBuilder<T: BitWriter> {
+struct GCSBuilder<T: io::Write> {
 	encoder: GolombEncoder<T>,
 	n: u64,
 	p: u64,
@@ -51,7 +55,7 @@ struct GCSBuilder<T: BitWriter> {
 	values: Vec<u64>,
 }
 
-impl<T: BitWriter> GCSBuilder<T> {
+impl<T: io::Write> GCSBuilder<T> {
 	fn new(out: T, n: u64, p: u64, index_granularity: u64) -> Result<GCSBuilder<T>, &'static str> {
 		match n.checked_mul(p) {
 			Some(_) => Ok(GCSBuilder {
@@ -78,7 +82,7 @@ impl<T: BitWriter> GCSBuilder<T> {
 		let index_points = self.values.len() / self.index_granularity;
 
 		// v => bit position
-		let mut positions: Vec<(usize, usize)> = Vec::with_capacity(index_points);
+		let mut index: Vec<(usize, usize)> = Vec::with_capacity(index_points);
 
 		let mut diff: u64;
 		let mut last: u64 = 0;
@@ -90,17 +94,30 @@ impl<T: BitWriter> GCSBuilder<T> {
 
 			let bits_written = self.encoder.encode(diff)?;
 
-			if self.index_granularity > 0 && (i + 1) % self.index_granularity == 0 {
-				positions.push((i, total_bits));
+			if self.index_granularity > 0 && i > 0 && i % self.index_granularity == 0 {
+				index.push((i, total_bits));
 			}
 
 			total_bits += bits_written;
 		}
 
 		println!("Total bits written: {}", total_bits);
-		println!("Index entries: {}", positions.len());
+		println!("Index entries: {} (expected {})", index.len(), index_points);
 
-		self.encoder.finish()
+		self.encoder.finish()?;
+
+		let mut io = BufWriter::new(File::create("test.index").unwrap());
+
+		for (v, pos) in index {
+			io.write_u64::<BigEndian>(v as u64)?;
+			io.write_u64::<BigEndian>(pos as u64)?;
+		}
+
+		// Write our footer
+		io.write_u64::<BigEndian>(total_bits as u64)?;
+		io.write(b"FREAKY:GCS:1")?;
+
+		Ok(())
 	}
 }
 
@@ -150,11 +167,8 @@ impl<T: BitReader> GCSReader<T> {
 	}
 }
 
-use std::{thread, time};
-use std::time::Instant;
-
 const INPUT_BUFFER_SIZE: usize = 1024 * 1024;
-const FALSE_POSITIVE_RATE: u64 = 100; // 10_000_000;
+const FALSE_POSITIVE_RATE: u64 = 10_000_000;
 const INDEX_GRANULARITY: u64 = 512;
 
 fn count_lines<R: BufRead + std::io::Seek>(mut inp: R) -> io::Result<u64> {
@@ -217,8 +231,8 @@ fn build_gcs<R: io::Read + std::io::Seek, W: io::Write>(infile: R, outfile: W, f
 	let start = Instant::now();
 
 	let mut count = 0;
-	let bitwriter = BitBufWriter::new(buf_out);
-	let mut gcs = GCSBuilder::new(bitwriter, n, fp, index_granularity).unwrap();
+	// let bitwriter = BitBufWriter::new(buf_out);
+	let mut gcs = GCSBuilder::new(buf_out, n, fp, index_granularity).unwrap();
 	for line in buf_in.lines() {
 		gcs.add(line.unwrap()); // .expect("Error adding item to GCS builder");
 
