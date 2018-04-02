@@ -1,49 +1,40 @@
 
 use std::io;
 
-pub trait BitReader {
-	fn read_bit(&mut self) -> io::Result<u8>;
-	fn read_bits_u64(&mut self, nbits: u8) -> io::Result<u64>;
-}
-
-pub struct BitBufReader<T: io::Read> {
-	io: T,
+pub struct BitReader {
 	buf: [u8; 1],
 	mask: u8,
 }
 
-impl<T: io::Read> BitBufReader<T> {
-	pub fn new(io: T) -> BitBufReader<T> {
-		BitBufReader {
-			io: io,
+impl BitReader {
+	pub fn new() -> BitReader {
+		BitReader {
 			buf: [0],
 			mask: 0,
 		}
 	}
-}
 
-impl<T: io::Read> BitReader for BitBufReader<T> {
-	fn read_bit(&mut self) -> io::Result<u8> {
+	pub fn reset(&mut self) {
+		self.buf[0] = 0;
+		self.mask = 0;
+	}
+
+	pub fn read_bit<T: io::Read>(&mut self, mut io: T) -> io::Result<u8> {
 		if self.mask == 0 {
-			self.io.read_exact(&mut self.buf)?;
+			io.read_exact(&mut self.buf)?;
 			self.mask = 128;
 		}
 
 		let bit = if self.mask & self.buf[0] > 0 { 1 } else { 0 };
 
-		if self.mask == 1 {
-			// MSB 0
-			self.mask = 0;
-		} else {
-			self.mask >>= 1;
-		}
+		self.mask >>= 1;
 
 		// println!(" << {}", bit);
 
 		Ok(bit)
 	}
 
-	fn read_bits_u64(&mut self, nbits: u8) -> io::Result<u64> {
+	pub fn read_bits_u64<T: io::Read>(&mut self, mut io: T, nbits: u8) -> io::Result<u64> {
 		assert!(nbits < 64);
 
 		// println!("read_bits({})", nbits);
@@ -51,7 +42,7 @@ impl<T: io::Read> BitReader for BitBufReader<T> {
 		let mut bits: u64 = 0;
 
 		for i in 0..nbits {
-			let bit = self.read_bit()? as u64;
+			let bit = self.read_bit(&mut io)? as u64;
 			bits += (1 << (nbits - i - 1)) * bit;
 		}
 
@@ -59,38 +50,31 @@ impl<T: io::Read> BitReader for BitBufReader<T> {
 	}
 }
 
-
-
-pub trait BitWriter {
-	fn write_bit(&mut self, value: u8) -> io::Result<()>;
-	fn write_bits(&mut self, nbits: u8, value: u64) -> io::Result<(usize)>;
-	fn flush(&mut self) -> io::Result<()>;
-}
-
-pub struct BitBufWriter<T: io::Write> {
-	io: T,
+pub struct BitWriter {
 	byte: u8,
 	mask: u8,
 }
 
-impl<T: io::Write> BitBufWriter<T> {
-	pub fn new(io: T) -> BitBufWriter<T> {
-		BitBufWriter {
-			io: io,
+impl BitWriter {
+	pub fn new() -> BitWriter {
+		BitWriter {
 			byte: 0,
 			mask: 128,
 		}
 	}
-}
 
-impl<T: io::Write> BitWriter for BitBufWriter<T> {
-	fn write_bit(&mut self, bit: u8) -> io::Result<()> {
+	pub fn reset(&mut self) {
+		self.byte = 0;
+		self.mask = 128;
+	}
+
+	pub fn write_bit<T: io::Write>(&mut self, mut io: T, bit: u8) -> io::Result<()> {
 		assert!(bit <= 1);
 
 		self.byte += self.mask * bit;
 
 		if self.mask == 1 {
-			self.flush()?;
+			self.flush(&mut io)?;
 		} else {
 			self.mask >>= 1;
 		}
@@ -98,11 +82,11 @@ impl<T: io::Write> BitWriter for BitBufWriter<T> {
 		Ok(())
 	}
 
-	fn write_bits(&mut self, nbits: u8, value: u64) -> io::Result<usize> {
+	pub fn write_bits<T: io::Write>(&mut self, mut io: T, nbits: u8, value: u64) -> io::Result<usize> {
 		let mut mask: u64 = 1 << (nbits - 1);
 
 		for _ in 0..nbits {
-			self.write_bit(if (value & mask) > 0 { 1 } else { 0 })?;
+			self.write_bit(&mut io, if (value & mask) > 0 { 1 } else { 0 })?;
 
 			mask >>= 1
 		}
@@ -110,11 +94,10 @@ impl<T: io::Write> BitWriter for BitBufWriter<T> {
 		Ok(nbits as usize)
 	}
 
-	fn flush(&mut self) -> io::Result<()> {
+	pub fn flush<T: io::Write>(&mut self, mut io: T) -> io::Result<()> {
 		if self.mask != 128 {
-			self.io.write_all(&[self.byte])?;
-			self.mask = 128;
-			self.byte = 0;
+			io.write_all(&[self.byte])?;
+			self.reset();
 		}
 
 		Ok(())

@@ -15,40 +15,40 @@ use byteorder::{BigEndian, WriteBytesExt};
 mod bitio;
 use bitio::*;
 
-struct GolombEncoder<T: io::Write> {
-	out: BitBufWriter<T>,
+struct GolombEncoder {
+	writer: BitWriter,
 	p: u64,
 	log2p: u8,
 }
 
-impl<T: io::Write> GolombEncoder<T> {
-	fn new(out: T, p: u64) -> GolombEncoder<T> {
-		GolombEncoder::<T> {
-			out: BitBufWriter::new(out),
+impl GolombEncoder {
+	fn new(p: u64) -> GolombEncoder {
+		GolombEncoder {
+			writer: BitWriter::new(),
 			p: p,
 			log2p: (p as f64).log2().ceil().trunc() as u8,
 		}
 	}
 
-	fn encode(&mut self, val: u64) -> io::Result<usize> {
+	fn encode<T: io::Write>(&mut self, mut io: T, val: u64) -> io::Result<usize> {
 		let q: u64 = val / self.p;
 		let r: u64 = val % self.p;
 
 		let mut written = 0;
 
-		written += self.out.write_bits((q + 1) as u8, ((1 << (q + 1)) - 2))?;
-		written += self.out.write_bits(self.log2p, r)?;
+		written += self.writer.write_bits(&mut io, (q + 1) as u8, ((1 << (q + 1)) - 2))?;
+		written += self.writer.write_bits(&mut io, self.log2p, r)?;
 
 		Ok(written)
 	}
 
-	fn finish(&mut self) -> io::Result<()> {
-		self.out.flush()
+	fn finish<T: io::Write>(&mut self, mut io: T) -> io::Result<()> {
+		self.writer.flush(&mut io)
 	}
 }
 
 struct GCSBuilder<T: io::Write> {
-	encoder: GolombEncoder<T>,
+	io: T,
 	n: u64,
 	p: u64,
 	index_granularity: usize,
@@ -59,7 +59,7 @@ impl<T: io::Write> GCSBuilder<T> {
 	fn new(out: T, n: u64, p: u64, index_granularity: u64) -> Result<GCSBuilder<T>, &'static str> {
 		match n.checked_mul(p) {
 			Some(_) => Ok(GCSBuilder {
-				encoder: GolombEncoder::new(out, p),
+				io: out,
 				n: n,
 				p: p,
 				index_granularity: index_granularity as usize,
@@ -69,7 +69,7 @@ impl<T: io::Write> GCSBuilder<T> {
 		}
 	}
 
-	fn add(&mut self, data: std::string::String) {
+	fn add(&mut self, data: &str) {
 		let h = u64::from_str_radix(&data[0..15], 16).unwrap() % (self.n * self.p);
 
 		self.values.push(h);
@@ -83,6 +83,7 @@ impl<T: io::Write> GCSBuilder<T> {
 
 		// v => bit position
 		let mut index: Vec<(usize, usize)> = Vec::with_capacity(index_points);
+		let mut encoder = GolombEncoder::new(self.p);
 
 		let mut diff: u64;
 		let mut last: u64 = 0;
@@ -92,7 +93,7 @@ impl<T: io::Write> GCSBuilder<T> {
 			diff = v - last;
 			last = *v;
 
-			let bits_written = self.encoder.encode(diff)?;
+			let bits_written = encoder.encode(&mut self.io, diff)?;
 
 			if self.index_granularity > 0 && i > 0 && i % self.index_granularity == 0 {
 				index.push((i, total_bits));
@@ -104,65 +105,67 @@ impl<T: io::Write> GCSBuilder<T> {
 		println!("Total bits written: {}", total_bits);
 		println!("Index entries: {} (expected {})", index.len(), index_points);
 
-		self.encoder.finish()?;
+		encoder.finish(&mut self.io)?;
 
-		let mut io = BufWriter::new(File::create("test.index").unwrap());
+		// let mut io = BufWriter::new(File::create("test.index").unwrap());
 
 		for (v, pos) in index {
-			io.write_u64::<BigEndian>(v as u64)?;
-			io.write_u64::<BigEndian>(pos as u64)?;
+			self.io.write_u64::<BigEndian>(v as u64)?;
+			self.io.write_u64::<BigEndian>(pos as u64)?;
 		}
 
 		// Write our footer
-		io.write_u64::<BigEndian>(total_bits as u64)?;
-		io.write(b"FREAKY:GCS:1")?;
+		self.io.write_u64::<BigEndian>(total_bits as u64)?;
+		self.io.write(b"FREAKY:GCS:1")?;
 
 		Ok(())
 	}
 }
 
-struct GolombDecoder<T> {
-	reader: T,
+struct GolombDecoder {
+	reader: BitReader,
 	p: u64,
 	log2p: u8,
 }
 
-impl<T: BitReader> GolombDecoder<T> {
-	fn new(reader: T, p: u64) -> GolombDecoder<T> {
-		GolombDecoder::<T> {
-			reader: reader,
+impl GolombDecoder {
+	fn new(p: u64) -> GolombDecoder {
+		GolombDecoder {
+			reader: BitReader::new(),
 			p: p,
 			log2p: (p as f64).log2().ceil().trunc() as u8,
 		}
 	}
 
-	fn next(&mut self) -> io::Result<u64> {
+	fn next<T: io::Read>(&mut self, mut io: T) -> io::Result<u64> {
 		let mut v: u64 = 0;
 
-		while self.reader.read_bit()? == 1 {
+		while self.reader.read_bit(&mut io)? == 1 {
 			v += self.p;
 		}
 
-		v += self.reader.read_bits_u64(self.log2p)?;
+		v += self.reader.read_bits_u64(&mut io, self.log2p)?;
 		Ok(v)
 	}
 }
 
 struct GCSReader<T> {
-	decoder: GolombDecoder<T>,
+	io: T,
+	decoder: GolombDecoder,
 	last: u64,
 }
 
-impl<T: BitReader> GCSReader<T> {
-	fn new(reader: T, p: u64) -> GCSReader<T> {
+impl<T: io::Read> GCSReader<T> {
+	fn new(io: T, p: u64) -> GCSReader<T> {
 		GCSReader {
-			decoder: GolombDecoder::new(reader, p),
+			io: io,
+			decoder: GolombDecoder::new(p),
 			last: 0,
 		}
 	}
 
 	fn next(&mut self) -> io::Result<u64> {
-		self.last = self.last + self.decoder.next()?;
+		self.last = self.last + self.decoder.next(&mut self.io)?;
 		Ok(self.last)
 	}
 }
@@ -190,8 +193,7 @@ fn count_lines<R: BufRead + std::io::Seek>(mut inp: R) -> io::Result<u64> {
 
 fn test<R: io::Read>(test_in: R, fp: u64) {
 	let test_inbuf = BufReader::new(test_in);
-	let test_bitreader = BitBufReader::new(test_inbuf);
-	let mut decoder = GCSReader::new(test_bitreader, fp);
+	let mut decoder = GCSReader::new(test_inbuf, fp);
 
 	let mut last = 0;
 	loop {
@@ -234,7 +236,7 @@ fn build_gcs<R: io::Read + std::io::Seek, W: io::Write>(infile: R, outfile: W, f
 	// let bitwriter = BitBufWriter::new(buf_out);
 	let mut gcs = GCSBuilder::new(buf_out, n, fp, index_granularity).unwrap();
 	for line in buf_in.lines() {
-		gcs.add(line.unwrap()); // .expect("Error adding item to GCS builder");
+		gcs.add(&line.unwrap()); // .expect("Error adding item to GCS builder");
 
 		count += 1;
 		if count % 10_000_000 == 0 {
