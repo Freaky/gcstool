@@ -96,7 +96,7 @@ impl<T: io::Write> GCSBuilder<T> {
 			let bits_written = encoder.encode(&mut self.io, diff)?;
 
 			if self.index_granularity > 0 && i > 0 && i % self.index_granularity == 0 {
-				index.push((i, total_bits));
+				index.push((v, total_bits));
 			}
 
 			total_bits += bits_written;
