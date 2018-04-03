@@ -140,35 +140,6 @@ impl<T: io::Write> GCSBuilder<T> {
 	}
 }
 
-/*
-struct GolombDecoder {
-	reader: BitReader,
-	p: u64,
-	log2p: u8,
-}
-
-impl GolombDecoder {
-	fn new(p: u64) -> GolombDecoder {
-		GolombDecoder {
-			reader: BitReader::new(),
-			p: p,
-			log2p: (p as f64).log2().ceil().trunc() as u8,
-		}
-	}
-
-	fn next<T: io::Read>(&mut self, mut io: T) -> io::Result<u64> {
-		let mut v: u64 = 0;
-
-		while self.reader.read_bit(&mut io)? == 1 {
-			v += self.p;
-		}
-
-		v += self.reader.read_bits_u64(&mut io, self.log2p)?;
-		Ok(v)
-	}
-}
-*/
-
 struct GCSReader<T> {
 	io: T,
 	n: u64,
@@ -222,7 +193,6 @@ impl<T: io::Read + io::Seek> GCSReader<T> {
 
 	fn exists(&mut self, data: &str) -> io::Result<bool> {
 		let h = u64::from_str_radix(&data[0..15], 16).unwrap() % (self.n * self.p);
-		println!("target: {}", h);
 
 		let nearest = match self.index.binary_search_by_key(&h, |&(v,p)| v) {
 			Ok(i) => { return Ok(true) },
@@ -259,12 +229,6 @@ impl<T: io::Read + io::Seek> GCSReader<T> {
 			return Ok(false);
 		}
 	}
-/*
-	fn next(&mut self) -> io::Result<u64> {
-		self.last = self.last + self.decoder.next(&mut self.io)?;
-		Ok(self.last)
-	}
-	*/
 }
 
 fn count_lines<R: BufRead + std::io::Seek>(mut inp: R) -> io::Result<u64> {
@@ -297,7 +261,11 @@ fn test<R: io::Read + io::Seek>(test_in: R) {
 		println!("Search for '{}'", line);
 		sha.update(line.as_bytes());
 		let hash = sha.digest().to_string();
+		let start = Instant::now();
 		println!("Search: {:?}", searcher.exists(&hash));
+		let elapsed = start.elapsed();
+		println!("Elapsed: {} ms",
+             (elapsed.as_secs() * 1_000) + (elapsed.subsec_nanos() / 1_000_000) as u64)
 	}
 }
 
@@ -323,10 +291,9 @@ fn build_gcs<R: io::Read + std::io::Seek, W: io::Write>(infile: R, outfile: W, f
 	let start = Instant::now();
 
 	let mut count = 0;
-	// let bitwriter = BitBufWriter::new(buf_out);
 	let mut gcs = GCSBuilder::new(buf_out, n, fp, index_granularity).unwrap();
 	for line in buf_in.lines() {
-		gcs.add(&line.unwrap()); // .expect("Error adding item to GCS builder");
+		gcs.add(&line.unwrap());
 
 		count += 1;
 		if count % 10_000_000 == 0 {
