@@ -94,13 +94,22 @@ impl BitWriter {
 		Ok(nbits as usize)
 	}
 
-	pub fn flush<T: io::Write>(&mut self, mut io: T) -> io::Result<()> {
-		if self.mask != 128 {
-			io.write_all(&[self.byte])?;
-			self.reset();
-		}
-
-		Ok(())
+	// Return the number of padding bits
+	pub fn flush<T: io::Write>(&mut self, mut io: T) -> io::Result<usize> {
+		let bits_written: usize = match self.mask {
+			128 => { return Ok(0) }
+			64 => 7,
+			32 => 6,
+			16 => 5,
+			8 => 4,
+			4 => 3,
+			2 => 2,
+			1 => 1,
+			_ => { panic!("invalid mask") }
+		};
+		io.write_all(&[self.byte])?;
+		self.reset();
+		Ok(bits_written)
 	}
 }
 

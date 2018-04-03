@@ -42,7 +42,7 @@ impl GolombEncoder {
 		Ok(written)
 	}
 
-	fn finish<T: io::Write>(&mut self, mut io: T) -> io::Result<()> {
+	fn finish<T: io::Write>(&mut self, mut io: T) -> io::Result<usize> {
 		self.writer.flush(&mut io)
 	}
 }
@@ -82,12 +82,12 @@ impl<T: io::Write> GCSBuilder<T> {
 		let index_points = self.values.len() / self.index_granularity;
 
 		// v => bit position
-		let mut index: Vec<(usize, usize)> = Vec::with_capacity(index_points);
+		let mut index: Vec<(u64, u64)> = Vec::with_capacity(index_points);
 		let mut encoder = GolombEncoder::new(self.p);
 
 		let mut diff: u64;
 		let mut last: u64 = 0;
-		let mut total_bits: usize = 0;
+		let mut total_bits: u64 = 0;
 
 		for (i, v) in self.values.iter().enumerate() {
 			diff = v - last;
@@ -96,27 +96,37 @@ impl<T: io::Write> GCSBuilder<T> {
 			let bits_written = encoder.encode(&mut self.io, diff)?;
 
 			if self.index_granularity > 0 && i > 0 && i % self.index_granularity == 0 {
-				index.push((v, total_bits));
+				index.push((*v, total_bits));
 			}
 
-			total_bits += bits_written;
+			total_bits += bits_written as u64;
 		}
 
 		println!("Total bits written: {}", total_bits);
 		println!("Index entries: {} (expected {})", index.len(), index_points);
+		assert!(index.len() == index_points);
 
-		encoder.finish(&mut self.io)?;
+		let end_of_data = total_bits + encoder.finish(&mut self.io)? as u64;
+		println!("end of data = {}", end_of_data);
+		assert!(end_of_data % 8 == 0);
 
-		// let mut io = BufWriter::new(File::create("test.index").unwrap());
+		let end_of_data = end_of_data / 8;
 
-		for (v, pos) in index {
-			self.io.write_u64::<BigEndian>(v as u64)?;
-			self.io.write_u64::<BigEndian>(pos as u64)?;
+		// Write the index: pairs of u64's (value, bit index)
+		for &(v, pos) in index.iter() {
+			self.io.write_u64::<BigEndian>(v)?;
+			self.io.write_u64::<BigEndian>(pos)?;
 		}
 
 		// Write our footer
-		self.io.write_u64::<BigEndian>(total_bits as u64)?;
-		self.io.write(b"FREAKY:GCS:1")?;
+		// [delim] N, P, index position in bytes, index size in entries [delim]
+		// 6*8=48 bytes
+		self.io.write_all(b"[GCS:v1]")?;
+		self.io.write_u64::<BigEndian>(self.n)?;
+		self.io.write_u64::<BigEndian>(self.p)?;
+		self.io.write_u64::<BigEndian>(end_of_data as u64)?;
+		self.io.write_u64::<BigEndian>(index.len() as u64)?;
+		self.io.write_all(b"[GCS:v1]")?;
 
 		Ok(())
 	}
