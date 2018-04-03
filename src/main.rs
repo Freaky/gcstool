@@ -17,7 +17,7 @@ mod bitio;
 use bitio::*;
 
 const INPUT_BUFFER_SIZE: usize = 1024 * 1024;
-const FALSE_POSITIVE_RATE: u64 = 10_000_000;
+const FALSE_POSITIVE_RATE: u64 = 1000;
 const INDEX_GRANULARITY: u64 = 512;
 
 const GCS_MAGIC: &[u8; 8] = b"[GCS:v0]";
@@ -179,7 +179,7 @@ impl<T: io::Read + io::Seek> GCSReader<T> {
 		self.io.read_exact(&mut hdr)?;
 		assert!(hdr == *GCS_MAGIC);
 
-		self.io.seek(SeekFrom::Start(self.end_of_data));
+		self.io.seek(SeekFrom::Start(self.end_of_data))?;
 
 		// slurp in the index.
 		self.index.reserve(self.index_len as usize);
@@ -188,14 +188,16 @@ impl<T: io::Read + io::Seek> GCSReader<T> {
 			self.index.push((self.io.read_u64::<BigEndian>()?, self.io.read_u64::<BigEndian>()?));
 		}
 
+		println!("Initialised GCS. n={}, p={}, index={}", self.n, self.p, self.index_len);
+
 		Ok(())
 	}
 
 	fn exists(&mut self, data: &str) -> io::Result<bool> {
 		let h = u64::from_str_radix(&data[0..15], 16).unwrap() % (self.n * self.p);
 
-		let nearest = match self.index.binary_search_by_key(&h, |&(v,p)| v) {
-			Ok(i) => { return Ok(true) },
+		let nearest = match self.index.binary_search_by_key(&h, |&(v,_p)| v) {
+			Ok(_i) => { return Ok(true) },
 			Err(i) => { if i == 0 { i } else { i - 1 } }
 		};
 
@@ -219,8 +221,6 @@ impl<T: io::Read + io::Seek> GCSReader<T> {
 
 			v += reader.read_bits_u64(&mut self.io, self.log2p)?;
 			last = v + last;
-
-			// println!("next: {}", last);
 		}
 
 		if last == h {
@@ -264,8 +264,7 @@ fn test<R: io::Read + io::Seek>(test_in: R) {
 		let start = Instant::now();
 		println!("Search: {:?}", searcher.exists(&hash));
 		let elapsed = start.elapsed();
-		println!("Elapsed: {} ms",
-             (elapsed.as_secs() * 1_000) + (elapsed.subsec_nanos() / 1_000_000) as u64)
+		println!("Elapsed: {}", (elapsed.as_secs() as f64) + (elapsed.subsec_nanos() as f64 / 1000_000_000.0))
 	}
 }
 

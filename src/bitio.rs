@@ -29,15 +29,11 @@ impl BitReader {
 
 		self.mask >>= 1;
 
-		// println!(" << {}", bit);
-
 		Ok(bit)
 	}
 
 	pub fn read_bits_u64<T: io::Read>(&mut self, mut io: T, nbits: u8) -> io::Result<u64> {
 		assert!(nbits < 64);
-
-		// println!("read_bits({})", nbits);
 
 		let mut bits: u64 = 0;
 
