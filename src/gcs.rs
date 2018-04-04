@@ -9,17 +9,17 @@ use bitio::*;
 const GCS_MAGIC: &[u8; 8] = b"[GCS:v0]";
 
 pub struct GolombEncoder {
-	writer: BitWriter,
 	p: u64,
 	log2p: u8,
+	writer: BitWriter,
 }
 
 impl GolombEncoder {
 	pub fn new(p: u64) -> GolombEncoder {
 		GolombEncoder {
-			writer: BitWriter::new(),
-			p: p,
+			p,
 			log2p: (p as f64).log2().ceil().trunc() as u8,
+			writer: BitWriter::new(),
 		}
 	}
 
@@ -29,7 +29,7 @@ impl GolombEncoder {
 
 		let mut written = 0;
 
-		written += self.writer.write_bits(&mut io, (q + 1) as u8, ((1 << (q + 1)) - 2))?;
+		written += self.writer.write_bits(&mut io, (q + 1) as u8, (1 << (q + 1)) - 2)?;
 		written += self.writer.write_bits(&mut io, self.log2p, r)?;
 
 		Ok(written)
@@ -49,12 +49,12 @@ pub struct GCSBuilder<T: io::Write> {
 }
 
 impl<T: io::Write> GCSBuilder<T> {
-	pub fn new(out: T, n: u64, p: u64, index_granularity: u64) -> Result<GCSBuilder<T>, &'static str> {
+	pub fn new(io: T, n: u64, p: u64, index_granularity: u64) -> Result<GCSBuilder<T>, &'static str> {
 		match n.checked_mul(p) {
 			Some(_) => Ok(GCSBuilder {
-				io: out,
-				n: n,
-				p: p,
+				io,
+				n,
+				p,
 				index_granularity: index_granularity as usize,
 				values: Vec::with_capacity(n as usize),
 			}),
@@ -106,7 +106,7 @@ impl<T: io::Write> GCSBuilder<T> {
 		let end_of_data = end_of_data / 8;
 
 		// Write the index: pairs of u64's (value, bit index)
-		for &(v, pos) in index.iter() {
+		for &(v, pos) in &index {
 			self.io.write_u64::<BigEndian>(v)?;
 			self.io.write_u64::<BigEndian>(pos)?;
 		}
@@ -139,7 +139,7 @@ pub struct GCSReader<T> {
 impl<T: io::Read + io::Seek> GCSReader<T> {
 	pub fn new(io: T) -> GCSReader<T> {
 		GCSReader {
-			io: io,
+			io,
 			n: 0,
 			p: 0,
 			end_of_data: 0,
@@ -204,13 +204,9 @@ impl<T: io::Read + io::Seek> GCSReader<T> {
 			}
 
 			v += reader.read_bits_u64(&mut self.io, self.log2p)?;
-			last = v + last;
+			last += v;
 		}
 
-		if last == h {
-			return Ok(true);
-		} else {
-			return Ok(false);
-		}
+		Ok(last == h)
 	}
 }

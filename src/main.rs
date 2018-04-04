@@ -53,7 +53,7 @@ fn test<R: io::Read + io::Seek>(test_in: R) {
 		let start = Instant::now();
 		println!("Search: {:?}", searcher.exists(&hash));
 		let elapsed = start.elapsed();
-		println!("Elapsed: {}", (elapsed.as_secs() as f64) + (elapsed.subsec_nanos() as f64 / 1000_000_000.0))
+		println!("Elapsed: {}", (elapsed.as_secs() as f64) + (f64::from(elapsed.subsec_nanos()) / 1_000_000_000.0))
 	}
 }
 
@@ -78,19 +78,17 @@ fn build_gcs<R: io::Read + std::io::Seek, W: io::Write>(infile: R, outfile: W, f
 
 	let start = Instant::now();
 
-	let mut count = 0;
 	let mut gcs = GCSBuilder::new(buf_out, n, fp, index_granularity).unwrap();
-	for line in buf_in.lines() {
+	for (count, line) in buf_in.lines().enumerate() {
 		gcs.add(&line.unwrap());
 
-		count += 1;
-		if count % 10_000_000 == 0 {
+		if count % 10_000_000_usize == 0 {
 			println!(
 				" >> {} of {}, {:.1}% ({}/sec)",
 				count,
 				n,
 				(count as f64 / n as f64) * 100.0,
-				count / start.elapsed().as_secs()
+				count / start.elapsed().as_secs() as usize
 			);
 		}
 	}

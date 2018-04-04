@@ -39,7 +39,7 @@ impl BitReader {
 		let mut bits: u64 = 0;
 
 		for i in 0..nbits {
-			let bit = self.read_bit(&mut io)? as u64;
+			let bit = u64::from(self.read_bit(&mut io)?);
 			bits += (1 << (nbits - i - 1)) * bit;
 		}
 
