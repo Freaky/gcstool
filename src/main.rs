@@ -1,4 +1,3 @@
-use std::env;
 use std::io;
 use std::io::prelude::*;
 use std::io::SeekFrom;
@@ -11,14 +10,15 @@ extern crate bytecount;
 extern crate byteorder;
 extern crate sha1;
 
+#[macro_use]
+extern crate clap;
+
 mod bitio;
 mod gcs;
 
 use gcs::*;
 
 const INPUT_BUFFER_SIZE: usize = 1024 * 1024;
-const FALSE_POSITIVE_RATE: u64 = 1000;
-const INDEX_GRANULARITY: u64 = 512;
 
 fn count_lines<R: BufRead + std::io::Seek>(mut inp: R) -> io::Result<u64> {
 	let mut buffer: Vec<u8> = vec![0; INPUT_BUFFER_SIZE];
@@ -111,32 +111,62 @@ fn build_gcs_with_filenames(in_filename: &str, out_filename: &str, fp: u64, inde
 }
 
 fn main() {
-	let args: Vec<String> = env::args().collect();
-	let fp = FALSE_POSITIVE_RATE;
-	let index_gran = INDEX_GRANULARITY;
+	let args = clap_app!(gcdtool =>
+		(version: "0.0.1")
+		(author: "Thomas Hurst <tom@hir.st>")
+		(about: "Golomb Compressed Sets tool -- compact set membership database.")
+		(@arg verbose: -v --verbose "Be verbose")
+		(@subcommand create =>
+			(about: "Create GCS database from file")
+			(@arg probability: -p +takes_value "False positive rate for queries, 1-in-p. Default 16777216")
+			(@arg index_granularity: -i +takes_value "Entries per index point (16 bytes each). Default 1024")
+			(@arg INPUT: +required "Input file")
+			(@arg OUTPUT: +required "Database to build")
+		)
+		(@subcommand query =>
+		 (about: "Query a database")
+		 (@arg FILE: +required "Database to query")
+		)
+	).get_matches();
 
 	let stderr = &mut std::io::stderr();
 
-	match args.len() {
-		3 => {
-			let in_filename = &args[1];
-			let out_filename = &args[2];
+	match args.subcommand() {
+		("create", Some(matches)) => {
+			let in_filename = matches.value_of("INPUT").unwrap();
+			let out_filename = matches.value_of("OUTPUT").unwrap();
+
+			let fp = match matches.value_of("probability").unwrap_or("16777216").parse::<u64>() {
+				Ok(fp) => fp,
+				Err(_) => {
+					writeln!(stderr, "Invalid false-positive rate").ok();
+					std::process::exit(1);
+				}
+			};
+
+			let index_gran = match matches.value_of("index_granularity").unwrap_or("1024").parse::<u64>() {
+				Ok(i) => i,
+				Err(_) => {
+					writeln!(stderr, "Invalid index granularity").ok();
+					std::process::exit(1);
+				}
+			};
 
 			if let Err(e) = build_gcs_with_filenames(in_filename, out_filename, fp, index_gran) {
 				writeln!(stderr, "Error: {}", e).ok();
 
 				std::process::exit(1);
 			}
-		}
-		2 => {
-			let filename = &args[1];
+		},
+		("query", Some(matches)) => {
+			let filename = matches.value_of("FILE").unwrap();
 
 			let outfile = File::open(filename).expect("can't open input");
 			test(outfile);
-		}
+		},
 		_ => {
-			println!("Usage: {} infile outfile", args[0]);
+			writeln!(stderr, "Use a subcommand: create, query, help").ok();
 			std::process::exit(1);
-		}
+		},
 	}
 }
