@@ -41,7 +41,8 @@ fn calculate_hash(data: &str) -> u64 {
 	u64::from_str_radix(&data[0..15], 16).unwrap();
 }
 */
-fn test<R: io::Read + io::Seek>(test_in: R) {
+
+fn query_gcs<R: io::Read + io::Seek>(test_in: R) {
 	let test_inbuf = BufReader::new(test_in);
 	let mut searcher = GCSReader::new(test_inbuf);
 	searcher.initialize().expect("GCD initialize failure");
@@ -61,12 +62,15 @@ fn test<R: io::Read + io::Seek>(test_in: R) {
 	}
 }
 
-fn build_gcs<R: io::Read + std::io::Seek, W: io::Write>(infile: R, outfile: W, fp: u64, index_granularity: u64) -> io::Result<()> {
-	let mut buf_in = BufReader::new(infile);
+fn create_gcs(in_filename: &str, out_filename: &str, fp: u64, index_gran: u64) -> io::Result<()> {
+	let mut infile = BufReader::new(File::open(in_filename)?);
+	let outfile = BufWriter::new(OpenOptions::new().write(true).create_new(true).open(out_filename)?);
 
 	println!("Counting items");
 
-	let n = count_lines(&mut buf_in)?;
+	let start = Instant::now();
+
+	let n = count_lines(&mut infile)?;
 
 	println!("Counted {} items", n);
 
@@ -76,15 +80,11 @@ fn build_gcs<R: io::Read + std::io::Seek, W: io::Write>(infile: R, outfile: W, f
 		thread::sleep(time::Duration::from_millis(4000));
 	}
 
-	println!("Building Golomb Compressed Set");
+	let mut gcs = GCSBuilder::new(outfile, n, fp, index_gran).expect("Couldn't initialize builder");
 
-	let buf_out = BufWriter::new(outfile);
-
-	let start = Instant::now();
-
-	let mut gcs = GCSBuilder::new(buf_out, n, fp, index_granularity).unwrap();
-	for (count, line) in buf_in.lines().enumerate() {
+	for (count, line) in infile.lines().enumerate() {
 		gcs.add(&line.unwrap());
+
 
 		if count % 10_000_000_usize == 0 {
 			println!(
@@ -100,14 +100,6 @@ fn build_gcs<R: io::Read + std::io::Seek, W: io::Write>(infile: R, outfile: W, f
 	println!("Writing out GCS");
 	gcs.finish()?;
 	println!("Done in {} seconds", start.elapsed().as_secs());
-	Ok(())
-}
-
-fn build_gcs_with_filenames(in_filename: &str, out_filename: &str, fp: u64, index_gran: u64) -> io::Result<()> {
-	let infile = File::open(in_filename)?;
-	let outfile = OpenOptions::new().write(true).create_new(true).open(out_filename)?;
-
-	build_gcs(infile, outfile, fp, index_gran)?;
 
 	Ok(())
 }
@@ -142,7 +134,7 @@ fn main() {
 			let fp = value_t!(matches, "probability", u64).unwrap_or_else(|e| e.exit() );
 			let index_gran = value_t!(matches, "index_granularity", u64).unwrap_or_else(|e| e.exit() );
 
-			if let Err(e) = build_gcs_with_filenames(in_filename, out_filename, fp, index_gran) {
+			if let Err(e) = create_gcs(in_filename, out_filename, fp, index_gran) {
 				writeln!(stderr, "Error: {}", e).ok();
 
 				std::process::exit(1);
@@ -152,7 +144,7 @@ fn main() {
 			let filename = matches.value_of("FILE").unwrap();
 
 			let outfile = File::open(filename).expect("can't open input");
-			test(outfile);
+			query_gcs(outfile);
 		},
 		_ => { /* not reached */ },
 	}
