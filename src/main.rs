@@ -36,7 +36,11 @@ fn count_lines<R: BufRead + std::io::Seek>(mut inp: R) -> io::Result<u64> {
 
 	Ok(n)
 }
-
+/*
+fn calculate_hash(data: &str) -> u64 {
+	u64::from_str_radix(&data[0..15], 16).unwrap();
+}
+*/
 fn test<R: io::Read + io::Seek>(test_in: R) {
 	let test_inbuf = BufReader::new(test_in);
 	let mut searcher = GCSReader::new(test_inbuf);
@@ -116,8 +120,8 @@ fn main() {
 		(@arg verbose: -v --verbose "Be verbose")
 		(@subcommand create =>
 			(about: "Create GCS database from file")
-			(@arg probability: -p +takes_value "False positive rate for queries, 1-in-p. Default 16777216")
-			(@arg index_granularity: -i +takes_value "Entries per index point (16 bytes each). Default 1024")
+			(@arg probability: -p +takes_value default_value("16777216") "False positive rate for queries, 1-in-p.")
+			(@arg index_granularity: -i +takes_value default_value("1024") "Entries per index point (16 bytes each).")
 			(@arg INPUT: +required "Input file")
 			(@arg OUTPUT: +required "Database to build")
 		)
@@ -134,21 +138,8 @@ fn main() {
 			let in_filename = matches.value_of("INPUT").unwrap();
 			let out_filename = matches.value_of("OUTPUT").unwrap();
 
-			let fp = match matches.value_of("probability").unwrap_or("16777216").parse::<u64>() {
-				Ok(fp) => fp,
-				Err(_) => {
-					writeln!(stderr, "Invalid false-positive rate").ok();
-					std::process::exit(1);
-				}
-			};
-
-			let index_gran = match matches.value_of("index_granularity").unwrap_or("1024").parse::<u64>() {
-				Ok(i) => i,
-				Err(_) => {
-					writeln!(stderr, "Invalid index granularity").ok();
-					std::process::exit(1);
-				}
-			};
+			let fp = value_t!(matches, "probability", u64).unwrap_or_else(|e| e.exit() );
+			let index_gran = value_t!(matches, "index_granularity", u64).unwrap_or_else(|e| e.exit() );
 
 			if let Err(e) = build_gcs_with_filenames(in_filename, out_filename, fp, index_gran) {
 				writeln!(stderr, "Error: {}", e).ok();
