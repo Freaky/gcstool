@@ -3,7 +3,7 @@ use std::io;
 use std::io::prelude::*;
 use std::io::SeekFrom;
 use std::io::{BufReader,BufWriter};
-use std::fs::File;
+use std::fs::{OpenOptions,File};
 use std::{thread, time};
 use std::time::Instant;
 
@@ -11,225 +11,14 @@ extern crate bytecount;
 extern crate byteorder;
 extern crate sha1;
 
-use byteorder::{BigEndian, ReadBytesExt, WriteBytesExt};
-
 mod bitio;
-use bitio::*;
+mod gcs;
+
+use gcs::*;
 
 const INPUT_BUFFER_SIZE: usize = 1024 * 1024;
 const FALSE_POSITIVE_RATE: u64 = 1000;
 const INDEX_GRANULARITY: u64 = 512;
-
-const GCS_MAGIC: &[u8; 8] = b"[GCS:v0]";
-
-struct GolombEncoder {
-	writer: BitWriter,
-	p: u64,
-	log2p: u8,
-}
-
-impl GolombEncoder {
-	fn new(p: u64) -> GolombEncoder {
-		GolombEncoder {
-			writer: BitWriter::new(),
-			p: p,
-			log2p: (p as f64).log2().ceil().trunc() as u8,
-		}
-	}
-
-	fn encode<T: io::Write>(&mut self, mut io: T, val: u64) -> io::Result<usize> {
-		let q: u64 = val / self.p;
-		let r: u64 = val % self.p;
-
-		let mut written = 0;
-
-		written += self.writer.write_bits(&mut io, (q + 1) as u8, ((1 << (q + 1)) - 2))?;
-		written += self.writer.write_bits(&mut io, self.log2p, r)?;
-
-		Ok(written)
-	}
-
-	fn finish<T: io::Write>(&mut self, mut io: T) -> io::Result<usize> {
-		self.writer.flush(&mut io)
-	}
-}
-
-struct GCSBuilder<T: io::Write> {
-	io: T,
-	n: u64,
-	p: u64,
-	index_granularity: usize,
-	values: Vec<u64>,
-}
-
-impl<T: io::Write> GCSBuilder<T> {
-	fn new(out: T, n: u64, p: u64, index_granularity: u64) -> Result<GCSBuilder<T>, &'static str> {
-		match n.checked_mul(p) {
-			Some(_) => Ok(GCSBuilder {
-				io: out,
-				n: n,
-				p: p,
-				index_granularity: index_granularity as usize,
-				values: Vec::with_capacity(n as usize),
-			}),
-			None => Err("n*p must fit in u64")
-		}
-	}
-
-	fn add(&mut self, data: &str) {
-		let h = u64::from_str_radix(&data[0..15], 16).unwrap() % (self.n * self.p);
-
-		self.values.push(h);
-	}
-
-	fn finish(&mut self) -> io::Result<()> {
-		self.values.sort_unstable();
-		self.values.dedup();
-
-		let index_points = self.values.len() / self.index_granularity;
-
-		// v => bit position
-		let mut index: Vec<(u64, u64)> = Vec::with_capacity(index_points);
-		let mut encoder = GolombEncoder::new(self.p);
-
-		let mut diff: u64;
-		let mut last: u64 = 0;
-		let mut total_bits: u64 = 0;
-
-		for (i, v) in self.values.iter().enumerate() {
-			diff = v - last;
-			last = *v;
-
-			let bits_written = encoder.encode(&mut self.io, diff)?;
-
-			total_bits += bits_written as u64;
-
-			if self.index_granularity > 0 && i > 0 && i % self.index_granularity == 0 {
-				index.push((*v, total_bits));
-			}
-		}
-
-		println!("Total bits written: {}", total_bits);
-		println!("Index entries: {} (expected {})", index.len(), index_points);
-		assert!(index.len() == index_points);
-
-		let end_of_data = total_bits + encoder.finish(&mut self.io)? as u64;
-		println!("end of data = {}", end_of_data);
-		assert!(end_of_data % 8 == 0);
-
-		let end_of_data = end_of_data / 8;
-
-		// Write the index: pairs of u64's (value, bit index)
-		for &(v, pos) in index.iter() {
-			self.io.write_u64::<BigEndian>(v)?;
-			self.io.write_u64::<BigEndian>(pos)?;
-		}
-
-		// Write our footer
-		// [delim] N, P, index position in bytes, index size in entries [delim]
-		// 6*8=48 bytes
-		assert!(GCS_MAGIC.len() == 8);
-		self.io.write_all(GCS_MAGIC)?;
-		self.io.write_u64::<BigEndian>(self.n)?;
-		self.io.write_u64::<BigEndian>(self.p)?;
-		self.io.write_u64::<BigEndian>(end_of_data as u64)?;
-		self.io.write_u64::<BigEndian>(index.len() as u64)?;
-		self.io.write_all(GCS_MAGIC)?;
-
-		Ok(())
-	}
-}
-
-struct GCSReader<T> {
-	io: T,
-	n: u64,
-	p: u64,
-	end_of_data: u64,
-	index_len: u64,
-	index: Vec<(u64, u64)>,
-	last: u64,
-	log2p: u8,
-}
-
-impl<T: io::Read + io::Seek> GCSReader<T> {
-	fn new(io: T) -> GCSReader<T> {
-		GCSReader {
-			io: io,
-			n: 0,
-			p: 0,
-			last: 0,
-			end_of_data: 0,
-			index_len: 0,
-			index: Vec::with_capacity(0),
-			log2p: 0,
-		}
-	}
-
-	fn initialize(&mut self) -> io::Result<()> {
-		self.io.seek(SeekFrom::End(-48))?;
-		let mut hdr = [0; 8];
-		self.io.read_exact(&mut hdr)?;
-		assert!(hdr == *GCS_MAGIC);
-		self.n = self.io.read_u64::<BigEndian>()?;
-		self.p = self.io.read_u64::<BigEndian>()?;
-		self.log2p = (self.p as f64).log2().ceil().trunc() as u8;
-		self.end_of_data = self.io.read_u64::<BigEndian>()?;
-		self.index_len = self.io.read_u64::<BigEndian>()?;
-		let mut hdr = [0; 8];
-		self.io.read_exact(&mut hdr)?;
-		assert!(hdr == *GCS_MAGIC);
-
-		self.io.seek(SeekFrom::Start(self.end_of_data))?;
-
-		// slurp in the index.
-		self.index.reserve(self.index_len as usize);
-
-		for _ in 0..self.index_len {
-			self.index.push((self.io.read_u64::<BigEndian>()?, self.io.read_u64::<BigEndian>()?));
-		}
-
-		println!("Initialised GCS. n={}, p={}, index={}", self.n, self.p, self.index_len);
-
-		Ok(())
-	}
-
-	fn exists(&mut self, data: &str) -> io::Result<bool> {
-		let h = u64::from_str_radix(&data[0..15], 16).unwrap() % (self.n * self.p);
-
-		let nearest = match self.index.binary_search_by_key(&h, |&(v,_p)| v) {
-			Ok(_i) => { return Ok(true) },
-			Err(i) => { if i == 0 { i } else { i - 1 } }
-		};
-
-		let bit_pos = self.index[nearest].1;
-		let bit_offset = (bit_pos % 8) as u8;
-		let byte_offset = bit_pos / 8;
-
-		self.io.seek(SeekFrom::Start(byte_offset))?;
-		let mut reader = BitReader::new();
-		if bit_pos > 0 {
-			reader.read_bits_u64(&mut self.io, bit_offset)?;
-		}
-
-		let mut last = self.index[nearest].0;
-		while last < h {
-			let mut v: u64 = 0;
-
-			while reader.read_bit(&mut self.io)? == 1 {
-				v += self.p;
-			}
-
-			v += reader.read_bits_u64(&mut self.io, self.log2p)?;
-			last = v + last;
-		}
-
-		if last == h {
-			return Ok(true);
-		} else {
-			return Ok(false);
-		}
-	}
-}
 
 fn count_lines<R: BufRead + std::io::Seek>(mut inp: R) -> io::Result<u64> {
 	let mut buffer: Vec<u8> = vec![0; INPUT_BUFFER_SIZE];
@@ -268,12 +57,12 @@ fn test<R: io::Read + io::Seek>(test_in: R) {
 	}
 }
 
-fn build_gcs<R: io::Read + std::io::Seek, W: io::Write>(infile: R, outfile: W, fp: u64, index_granularity: u64) {
+fn build_gcs<R: io::Read + std::io::Seek, W: io::Write>(infile: R, outfile: W, fp: u64, index_granularity: u64) -> io::Result<()> {
 	let mut buf_in = BufReader::new(infile);
 
 	println!("Counting items");
 
-	let n = count_lines(&mut buf_in).unwrap();
+	let n = count_lines(&mut buf_in)?;
 
 	println!("Counted {} items", n);
 
@@ -307,8 +96,18 @@ fn build_gcs<R: io::Read + std::io::Seek, W: io::Write>(infile: R, outfile: W, f
 	}
 
 	println!("Writing out GCS");
-	gcs.finish().expect("Error writing GCS");
+	gcs.finish()?;
 	println!("Done in {} seconds", start.elapsed().as_secs());
+	Ok(())
+}
+
+fn build_gcs_with_filenames(in_filename: &str, out_filename: &str, fp: u64, index_gran: u64) -> io::Result<()> {
+	let infile = File::open(in_filename)?;
+	let outfile = OpenOptions::new().write(true).create_new(true).open(out_filename)?;
+
+	build_gcs(infile, outfile, fp, index_gran)?;
+
+	Ok(())
 }
 
 fn main() {
@@ -316,15 +115,18 @@ fn main() {
 	let fp = FALSE_POSITIVE_RATE;
 	let index_gran = INDEX_GRANULARITY;
 
+	let stderr = &mut std::io::stderr();
+
 	match args.len() {
 		3 => {
 			let in_filename = &args[1];
 			let out_filename = &args[2];
 
-			let infile = File::open(in_filename).expect("can't open input");
-			let outfile = File::create(out_filename).expect("can't open output");
+			if let Err(e) = build_gcs_with_filenames(in_filename, out_filename, fp, index_gran) {
+				writeln!(stderr, "Error: {}", e).ok();
 
-			build_gcs(infile, outfile, fp, index_gran);
+				std::process::exit(1);
+			}
 		}
 		2 => {
 			let filename = &args[1];

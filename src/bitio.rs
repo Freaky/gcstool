@@ -14,6 +14,7 @@ impl BitReader {
 		}
 	}
 
+	#[allow(dead_code)]
 	pub fn reset(&mut self) {
 		self.buf[0] = 0;
 		self.mask = 0;
