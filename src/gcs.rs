@@ -181,8 +181,8 @@ impl<T: io::Read + io::Seek> GCSReader<T> {
 		let h = u64::from_str_radix(&data[0..15], 16).unwrap() % (self.n * self.p);
 
 		let nearest = match self.index.binary_search_by_key(&h, |&(v,_p)| v) {
-			Ok(_i) => { return Ok(true) },
-			Err(i) => { if i == 0 { i } else { i - 1 } }
+			Ok(_)  => { return Ok(true) },
+			Err(e) => { e.saturating_sub(1) }
 		};
 
 		let bit_pos = self.index[nearest].1;
@@ -197,14 +197,11 @@ impl<T: io::Read + io::Seek> GCSReader<T> {
 
 		let mut last = self.index[nearest].0;
 		while last < h {
-			let mut v: u64 = 0;
-
 			while reader.read_bit(&mut self.io)? == 1 {
-				v += self.p;
+				last += self.p;
 			}
 
-			v += reader.read_bits_u64(&mut self.io, self.log2p)?;
-			last += v;
+			last += reader.read_bits_u64(&mut self.io, self.log2p)?;
 		}
 
 		Ok(last == h)
