@@ -113,7 +113,8 @@ fn build_gcs_with_filenames(in_filename: &str, out_filename: &str, fp: u64, inde
 }
 
 fn main() {
-	let args = clap_app!(gcdtool =>
+	let args = clap_app!(gcstool =>
+		(@setting SubcommandRequiredElseHelp)
 		(version: "0.0.1")
 		(author: "Thomas Hurst <tom@hir.st>")
 		(about: "Golomb Compressed Sets tool -- compact set membership database.")
@@ -126,8 +127,8 @@ fn main() {
 			(@arg OUTPUT: +required "Database to build")
 		)
 		(@subcommand query =>
-		 (about: "Query a database")
-		 (@arg FILE: +required "Database to query")
+			(about: "Query a database")
+			(@arg FILE: +required "Database to query")
 		)
 	).get_matches();
 
@@ -153,9 +154,6 @@ fn main() {
 			let outfile = File::open(filename).expect("can't open input");
 			test(outfile);
 		},
-		_ => {
-			writeln!(stderr, "Use a subcommand: create, query, help").ok();
-			std::process::exit(1);
-		},
+		_ => { /* not reached */ },
 	}
 }
