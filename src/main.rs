@@ -75,14 +75,14 @@ fn query_gcs<R: io::Read + io::Seek>(test_in: R) {
 
 /* 40% faster than lines(), 20% faster than read_line() */
 fn create_gcs(in_filename: &str, out_filename: &str, fp: u64, index_gran: u64) -> io::Result<()> {
-    let mut raw_infile = File::open(in_filename)?;
+    let raw_infile = File::open(in_filename)?;
     let outfile = BufWriter::new(OpenOptions::new()
         .write(true)
         .create_new(true)
         .open(out_filename)?);
 
     println!("Estimating lines");
-    let n = estimate_lines(&mut raw_infile)?;
+    let n = estimate_lines(&raw_infile)?;
     println!("Estimate {} items", n);
     let mut infile = BufReader::new(raw_infile);
 
