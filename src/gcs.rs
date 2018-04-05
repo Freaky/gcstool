@@ -82,7 +82,7 @@ impl<T: io::Write> GCSBuilder<T> {
             }
         }
 
-        for v in self.values.iter_mut() {
+        for v in &mut self.values {
             *v %= self.n * self.p;
         }
 
