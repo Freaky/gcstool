@@ -37,7 +37,7 @@ fn count_lines<R: BufRead + std::io::Seek>(mut inp: R) -> io::Result<u64> {
 	Ok(n)
 }
 
-/* simplified from_string_radix operating on a vec of u8's */
+/* simplified from_string_radix operating on a slice of u8's */
 fn u64_from_hex(src: &[u8]) -> Option<u64> {
 	let mut result: u64 = 0;
 
