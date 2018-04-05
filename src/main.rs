@@ -37,12 +37,6 @@ fn count_lines<R: BufRead + std::io::Seek>(mut inp: R) -> io::Result<u64> {
 	Ok(n)
 }
 
-/*
-fn calculate_hash(data: &str) -> u64 {
-	u64::from_str_radix(&data[0..15], 16).unwrap();
-}
-*/
-
 /* simplified from_string_radix operating on a vec of u8's */
 fn u64_from_hex(src: &[u8]) -> Option<u64> {
 	let mut result: u64 = 0;
