@@ -63,12 +63,22 @@ impl<T: io::Write> GCSBuilder<T> {
 	}
 
 	pub fn add(&mut self, value: u64) {
-		let h = value % (self.n * self.p);
-
-		self.values.push(h);
+		self.values.push(value);
 	}
 
 	pub fn finish(&mut self) -> io::Result<()> {
+		use std::io::{Error, ErrorKind};
+
+		self.n = self.values.len() as u64;
+		match self.n.checked_mul(self.p) {
+			Some(_) => { },
+			None => { return Err(Error::new(ErrorKind::Other, "n*p must fit in u64")); }
+		}
+
+		for v in self.values.iter_mut() {
+			*v %= self.n * self.p;
+		}
+
 		self.values.sort_unstable();
 		self.values.dedup();
 

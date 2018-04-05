@@ -6,7 +6,6 @@ use std::fs::{OpenOptions,File};
 use std::{thread, time};
 use std::time::Instant;
 
-extern crate bytecount;
 extern crate byteorder;
 extern crate sha1;
 
@@ -18,26 +17,21 @@ mod gcs;
 
 use gcs::*;
 
-const INPUT_BUFFER_SIZE: usize = 1024 * 1024;
+const ESTIMATE_LIMIT: u64 = 1024 * 1024 * 16;
 
-fn count_lines<R: BufRead + std::io::Seek>(mut inp: R) -> io::Result<u64> {
-	let mut buffer: Vec<u8> = vec![0; INPUT_BUFFER_SIZE];
-	let mut n: u64 = 0;
-	loop {
-		let len = inp.read(&mut buffer[0..INPUT_BUFFER_SIZE])?;
-		if len == 0 {
-			break;
-		}
+fn estimate_lines(mut inp: &std::fs::File) -> io::Result<u64> {
+	let size = inp.metadata()?.len();
+	let sample_size = std::cmp::min(size, ESTIMATE_LIMIT) as usize;
 
-		n += bytecount::count(&buffer, b'\n') as u64;
-	}
-
+	let mut buffer: Vec<u8> = vec!(0; sample_size);
+	inp.read_exact(&mut buffer)?;
 	inp.seek(SeekFrom::Start(0))?;
 
-	Ok(n)
+	let sample = buffer.iter().filter(|b| **b == b'\n').count() as u64;
+
+	Ok(sample * (size / (sample_size as u64)))
 }
 
-/* simplified from_string_radix operating on a slice of u8's */
 fn u64_from_hex(src: &[u8]) -> Option<u64> {
 	let mut result: u64 = 0;
 
@@ -78,17 +72,16 @@ fn query_gcs<R: io::Read + io::Seek>(test_in: R) {
 
 /* 40% faster than lines(), 20% faster than read_line() */
 fn create_gcs(in_filename: &str, out_filename: &str, fp: u64, index_gran: u64) -> io::Result<()> {
-	let mut infile = BufReader::new(File::open(in_filename)?);
+	let mut raw_infile = File::open(in_filename)?;
 	let outfile = BufWriter::new(OpenOptions::new().write(true).create_new(true).open(out_filename)?);
 
-	println!("Counting items");
+	println!("Estimating lines");
+	let n = estimate_lines(&mut raw_infile)?;
+	println!("Estimate {} items", n);
+	let mut infile = BufReader::new(raw_infile);
 
-	let n = count_lines(&mut infile)?;
-
-	println!("Counted {} items", n);
-
-	println!("Approx memory use: {} MB.", (n * 8) / (1024 * 1024));
-	if n > 1000 * 1000 {
+	println!("Estimated memory use: {} MB.", (n * 8) / (1024 * 1024));
+	if n > 1024 * 1024 * 2 {
 		println!("^C now and get a better computer if memory constrained");
 		thread::sleep(time::Duration::from_millis(4000));
 	}
@@ -105,11 +98,11 @@ fn create_gcs(in_filename: &str, out_filename: &str, fp: u64, index_gran: u64) -
 			count += 1;
 			if count % 10_000_000_usize == 0 {
 				println!(
-					" >> {} of {}, {:.1}% ({:?}/sec)",
+					" >> {} of {}, {:.1}% ({}/sec)",
 					count,
 					n,
 					(count as f64 / n as f64) * 100.0,
-					count.checked_div(start.elapsed().as_secs() as usize)
+					count.checked_div(start.elapsed().as_secs() as usize).unwrap_or(0)
 				);
 			}
 		} else {
