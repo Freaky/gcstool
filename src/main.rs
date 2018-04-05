@@ -45,7 +45,7 @@ fn u64_from_hex(src: &[u8]) -> Option<u64> {
 		result = match result.checked_mul(16).and_then(|r| {
 			(c as char)
 				.to_digit(16)
-				.and_then(|x| r.checked_add(x as u64))
+				.and_then(|x| r.checked_add(u64::from(x)))
 		}) {
 			Some(result) => result,
 			None => return None,
