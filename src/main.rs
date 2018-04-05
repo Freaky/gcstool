@@ -98,7 +98,7 @@ fn create_gcs(in_filename: &str, out_filename: &str, fp: u64, index_gran: u64) -
 	let mut gcs = GCSBuilder::new(outfile, n, fp, index_gran).expect("Couldn't initialize builder");
 
 	let mut line: Vec<u8> = Vec::with_capacity(128);
-	while infile.read_until(b'\n', &mut line).unwrap_or(0) > 0 { // XXX: unbounded read, see https://github.com/rust-lang/rfcs/issues/1427
+	while infile.by_ref().take(128).read_until(b'\n', &mut line).unwrap_or(0) > 0 {
 		if let Some(hash) = u64_from_hex(&line[0..15]) {
 			gcs.add(hash);
 
@@ -115,9 +115,8 @@ fn create_gcs(in_filename: &str, out_filename: &str, fp: u64, index_gran: u64) -
 		} else {
 			println!("Skipping line: {:?}", line);
 		}
+		line.clear();
 	}
-
-	std::process::exit(0);
 
 	println!("Writing out GCS");
 	gcs.finish()?;
