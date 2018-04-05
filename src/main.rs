@@ -42,9 +42,13 @@ fn u64_from_hex(src: &[u8]) -> Option<u64> {
 	let mut result: u64 = 0;
 
 	for &c in src {
-		result = match result.checked_mul(16).and_then(|r| (c as char).to_digit(16).and_then(|x| r.checked_add(x as u64))) {
+		result = match result.checked_mul(16).and_then(|r| {
+			(c as char)
+				.to_digit(16)
+				.and_then(|x| r.checked_add(x as u64))
+		}) {
 			Some(result) => result,
-			None => return None
+			None => return None,
 		}
 	}
 
