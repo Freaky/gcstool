@@ -124,49 +124,6 @@ fn create_gcs(in_filename: &str, out_filename: &str, fp: u64, index_gran: u64) -
 
 	Ok(())
 }
-/*
-fn old_create_gcs(in_filename: &str, out_filename: &str, fp: u64, index_gran: u64) -> io::Result<()> {
-	let mut infile = BufReader::new(File::open(in_filename)?);
-	let outfile = BufWriter::new(OpenOptions::new().write(true).create_new(true).open(out_filename)?);
-
-	println!("Counting items");
-
-	let n = count_lines(&mut infile)?;
-
-	println!("Counted {} items", n);
-
-	println!("Approx memory use: {} MB.", (n * 8) / (1024 * 1024));
-	if n > 1000 * 1000 {
-		println!("^C now and get a better computer if memory constrained");
-		thread::sleep(time::Duration::from_millis(4000));
-	}
-
-	let start = Instant::now();
-	let mut gcs = GCSBuilder::new(outfile, n, fp, index_gran).expect("Couldn't initialize builder");
-
-	// read_line ~ 17% faster, fair bit uglier.
-	for (count, line) in infile.lines().enumerate() {
-		gcs.add(&line.unwrap());
-
-
-		if count % 10_000_000_usize == 0 {
-			println!(
-				" >> {} of {}, {:.1}% ({:?}/sec)",
-				count,
-				n,
-				(count as f64 / n as f64) * 100.0,
-				count.checked_div(start.elapsed().as_secs() as usize)
-			);
-		}
-	}
-	std::process::exit(0);
-
-	println!("Writing out GCS");
-	gcs.finish()?;
-	println!("Done in {} seconds", start.elapsed().as_secs());
-
-	Ok(())
-}*/
 
 fn main() {
 	let args = clap_app!(gcstool =>
