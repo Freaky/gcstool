@@ -36,11 +36,26 @@ fn count_lines<R: BufRead + std::io::Seek>(mut inp: R) -> io::Result<u64> {
 
 	Ok(n)
 }
+
 /*
 fn calculate_hash(data: &str) -> u64 {
 	u64::from_str_radix(&data[0..15], 16).unwrap();
 }
 */
+
+/* simplified from_string_radix operating on a vec of u8's */
+fn u64_from_hex(src: &[u8]) -> Option<u64> {
+	let mut result: u64 = 0;
+
+	for &c in src {
+		result = match result.checked_mul(16).and_then(|r| (c as char).to_digit(16).and_then(|x| r.checked_add(x as u64))) {
+			Some(result) => result,
+			None => return None
+		}
+	}
+
+	Some(result)
+}
 
 fn query_gcs<R: io::Read + io::Seek>(test_in: R) {
 	let test_inbuf = BufReader::new(test_in);
@@ -55,20 +70,20 @@ fn query_gcs<R: io::Read + io::Seek>(test_in: R) {
 		println!("Search for '{}'", line);
 		sha.update(line.as_bytes());
 		let hash = sha.digest().to_string();
+		let val = u64_from_hex(&hash.as_bytes()[0..15]).unwrap_or(0);
 		let start = Instant::now();
-		println!("Search: {:?}", searcher.exists(&hash));
+		println!("Search: {:?}", searcher.exists(val));
 		let elapsed = start.elapsed();
 		println!("Elapsed: {}", (elapsed.as_secs() as f64) + (f64::from(elapsed.subsec_nanos()) / 1_000_000_000.0))
 	}
 }
 
+/* 40% faster than lines(), 20% faster than read_line() */
 fn create_gcs(in_filename: &str, out_filename: &str, fp: u64, index_gran: u64) -> io::Result<()> {
 	let mut infile = BufReader::new(File::open(in_filename)?);
 	let outfile = BufWriter::new(OpenOptions::new().write(true).create_new(true).open(out_filename)?);
 
 	println!("Counting items");
-
-	let start = Instant::now();
 
 	let n = count_lines(&mut infile)?;
 
@@ -80,22 +95,31 @@ fn create_gcs(in_filename: &str, out_filename: &str, fp: u64, index_gran: u64) -
 		thread::sleep(time::Duration::from_millis(4000));
 	}
 
+	let mut count = 0;
+	let start = Instant::now();
 	let mut gcs = GCSBuilder::new(outfile, n, fp, index_gran).expect("Couldn't initialize builder");
 
-	for (count, line) in infile.lines().enumerate() {
-		gcs.add(&line.unwrap());
+	let mut line: Vec<u8> = Vec::with_capacity(128);
+	while infile.read_until(b'\n', &mut line).unwrap_or(0) > 0 { // XXX: unbounded read, see https://github.com/rust-lang/rfcs/issues/1427
+		if let Some(hash) = u64_from_hex(&line[0..15]) {
+			gcs.add(hash);
 
-
-		if count % 10_000_000_usize == 0 {
-			println!(
-				" >> {} of {}, {:.1}% ({}/sec)",
-				count,
-				n,
-				(count as f64 / n as f64) * 100.0,
-				count / start.elapsed().as_secs() as usize
-			);
+			count += 1;
+			if count % 10_000_000_usize == 0 {
+				println!(
+					" >> {} of {}, {:.1}% ({:?}/sec)",
+					count,
+					n,
+					(count as f64 / n as f64) * 100.0,
+					count.checked_div(start.elapsed().as_secs() as usize)
+				);
+			}
+		} else {
+			println!("Skipping line: {:?}", line);
 		}
 	}
+
+	std::process::exit(0);
 
 	println!("Writing out GCS");
 	gcs.finish()?;
@@ -103,6 +127,49 @@ fn create_gcs(in_filename: &str, out_filename: &str, fp: u64, index_gran: u64) -
 
 	Ok(())
 }
+/*
+fn old_create_gcs(in_filename: &str, out_filename: &str, fp: u64, index_gran: u64) -> io::Result<()> {
+	let mut infile = BufReader::new(File::open(in_filename)?);
+	let outfile = BufWriter::new(OpenOptions::new().write(true).create_new(true).open(out_filename)?);
+
+	println!("Counting items");
+
+	let n = count_lines(&mut infile)?;
+
+	println!("Counted {} items", n);
+
+	println!("Approx memory use: {} MB.", (n * 8) / (1024 * 1024));
+	if n > 1000 * 1000 {
+		println!("^C now and get a better computer if memory constrained");
+		thread::sleep(time::Duration::from_millis(4000));
+	}
+
+	let start = Instant::now();
+	let mut gcs = GCSBuilder::new(outfile, n, fp, index_gran).expect("Couldn't initialize builder");
+
+	// read_line ~ 17% faster, fair bit uglier.
+	for (count, line) in infile.lines().enumerate() {
+		gcs.add(&line.unwrap());
+
+
+		if count % 10_000_000_usize == 0 {
+			println!(
+				" >> {} of {}, {:.1}% ({:?}/sec)",
+				count,
+				n,
+				(count as f64 / n as f64) * 100.0,
+				count.checked_div(start.elapsed().as_secs() as usize)
+			);
+		}
+	}
+	std::process::exit(0);
+
+	println!("Writing out GCS");
+	gcs.finish()?;
+	println!("Done in {} seconds", start.elapsed().as_secs());
+
+	Ok(())
+}*/
 
 fn main() {
 	let args = clap_app!(gcstool =>

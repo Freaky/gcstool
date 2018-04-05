@@ -62,8 +62,8 @@ impl<T: io::Write> GCSBuilder<T> {
 		}
 	}
 
-	pub fn add(&mut self, data: &str) {
-		let h = u64::from_str_radix(&data[0..15], 16).unwrap() % (self.n * self.p);
+	pub fn add(&mut self, value: u64) {
+		let h = value % (self.n * self.p);
 
 		self.values.push(h);
 	}
@@ -177,8 +177,8 @@ impl<T: io::Read + io::Seek> GCSReader<T> {
 		Ok(())
 	}
 
-	pub fn exists(&mut self, data: &str) -> io::Result<bool> {
-		let h = u64::from_str_radix(&data[0..15], 16).unwrap() % (self.n * self.p);
+	pub fn exists(&mut self, target: u64) -> io::Result<bool> {
+		let h = target % (self.n * self.p);
 
 		let nearest = match self.index.binary_search_by_key(&h, |&(v,_p)| v) {
 			Ok(_)  => { return Ok(true) },
