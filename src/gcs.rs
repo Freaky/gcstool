@@ -71,7 +71,7 @@ impl<T: io::Write> GCSBuilder<T> {
         self.values.push(value);
     }
 
-    pub fn finish(&mut self) -> io::Result<()> {
+    pub fn finish(mut self) -> io::Result<()> {
         use std::io::{Error, ErrorKind};
 
         self.n = self.values.len() as u64;
