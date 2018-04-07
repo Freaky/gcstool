@@ -8,14 +8,17 @@ use std::time::Instant;
 
 extern crate byteorder;
 extern crate sha1;
+extern crate memchr;
 
 #[macro_use]
 extern crate clap;
 
 mod bitio;
 mod gcs;
+mod line_reader;
 
 use gcs::*;
+use line_reader::*;
 
 const ESTIMATE_LIMIT: u64 = 1024 * 1024 * 16;
 
@@ -95,15 +98,11 @@ fn create_gcs(in_filename: &str, out_filename: &str, fp: u64, index_gran: u64) -
     // infile.read_line(): 2.56 M/sec (by saving String allocation)
     // infile.read_until(): 2.85 M/sec (by avoiding UTF-8 processing)
     // infile.take(128).read_until(): 2.7 M/sec
-    let mut line: Vec<u8> = Vec::with_capacity(128);
-    let mut infile = BufReader::new(infile);
+    // LineReader::next_line(): 3.8 M/sec
 
-    while infile
-        .by_ref()
-        .take(128)
-        .read_until(b'\n', &mut line)
-        .unwrap_or(0) > 0
-    {
+    let mut reader = LineReader::new(infile);
+    while let Some(line) = reader.next_line() {
+        let line = line.unwrap();
         if let Some(hash) = u64_from_hex(&line[0..15]) {
             gcs.add(hash);
 
@@ -122,7 +121,6 @@ fn create_gcs(in_filename: &str, out_filename: &str, fp: u64, index_gran: u64) -
         } else {
             println!("Skipping line: {:?}", line);
         }
-        line.clear();
     }
 
     println!("Writing out GCS");
