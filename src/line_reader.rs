@@ -107,13 +107,11 @@ impl<T: io::Read> LineReader<T> {
                 Ok(n) => {
                     r = n;
                     break;
-                },
+                }
                 Err(ref e) if e.kind() == ErrorKind::Interrupted => {
                     continue;
-                },
-                Err(e) => {
-                    return Err(e)
-                },
+                }
+                Err(e) => return Err(e),
             }
         }
 
@@ -121,11 +119,12 @@ impl<T: io::Read> LineReader<T> {
 
         // Find the new last end of line
         self.end_of_complete = cmp::min(
-            1 + memrchr(self.delimiter, &self.buf[..self.end_of_buffer]).unwrap_or(self.end_of_buffer),
+            1
+                + memrchr(self.delimiter, &self.buf[..self.end_of_buffer])
+                    .unwrap_or(self.end_of_buffer),
             self.end_of_buffer,
         );
 
         Ok(r > 0)
     }
-
 }

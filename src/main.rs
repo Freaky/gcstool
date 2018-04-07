@@ -7,8 +7,8 @@ use std::{thread, time};
 use std::time::Instant;
 
 extern crate byteorder;
-extern crate sha1;
 extern crate memchr;
+extern crate sha1;
 
 #[macro_use]
 extern crate clap;
@@ -84,7 +84,11 @@ fn create_gcs(in_filename: &str, out_filename: &str, fp: u64, index_gran: u64) -
         .open(out_filename)?);
 
     let n = estimate_lines(&infile)?;
-    println!("Estimated memory use for {} items: {} MB.", n, (n * 8) / (1024 * 1024));
+    println!(
+        "Estimated memory use for {} items: {} MB.",
+        n,
+        (n * 8) / (1024 * 1024)
+    );
     if n > 1024 * 1024 * 2 {
         println!("^C now and get a better computer if memory constrained");
         thread::sleep(time::Duration::from_millis(4000));
