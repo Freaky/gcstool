@@ -22,7 +22,7 @@ Say you have a copy of [pwned-passwords-2.0.txt][3], and you want to check
 your users passwords against the list when they sign up.  Unfortunately it's
 nearly 30GB, and not in a format particularly suited for searching.
 
-You you cut it down quite a bit simply by converting the SHA1 hashes in it to
+You cut it down quite a bit simply by converting the SHA1 hashes in it to
 binary, and even truncating them in the process, but even being really aggressive
 and spending just 6 bytes per entry (for a false-positive rate of 1 in 500,000)
 only gets you down to 3 GB.
