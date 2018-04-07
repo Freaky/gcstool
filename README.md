@@ -4,7 +4,7 @@ gcstool
 A small (prerelease) tool for creating and searching [Golomb Compressed Sets][1].
 
 
-== What?
+### What?
 
 Golomb Compressed Sets are similar to [Bloom filters][2] - they're space-efficient
 data structures that let you test whether a given element is a member of a set.
@@ -14,7 +14,7 @@ consider an element a member of a set even if it's never been seen before - whil
 having no false negatives.  If a GCS hasn't seen it, it's not on the list.
 
 
-== Why?
+### Why?
 
 Let's illustrate with a real-world problem: checking against leaked password lists.
 
@@ -65,7 +65,7 @@ Yay.
 Integrating it into your website is left as an exercise.
 
 
-== How?
+### How?
 
 Golomb Compressed Sets are surprisingly simple:
 
