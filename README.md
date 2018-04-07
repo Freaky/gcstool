@@ -94,3 +94,4 @@ for even 500 million items is just 16MB it barely seems worth the effort.
 [3]: https://haveibeenpwned.com/Passwords
 [4]: https://hur.st/bloomfilter/?n=501652074&p=500000&m=&k=
 [5]: https://hur.st/bloomfilter/?n=501652074&p=50M&m=&k=
+[6]: https://en.wikipedia.org/wiki/Golomb_coding
