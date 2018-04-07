@@ -8,8 +8,8 @@ use std::time::Instant;
 
 extern crate byteorder;
 extern crate memchr;
-extern crate sha1;
 extern crate rayon;
+extern crate sha1;
 
 #[macro_use]
 extern crate clap;
