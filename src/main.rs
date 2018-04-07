@@ -73,20 +73,15 @@ fn query_gcs<R: io::Read + io::Seek>(test_in: R) {
     }
 }
 
-/* 40% faster than lines(), 20% faster than read_line() */
 fn create_gcs(in_filename: &str, out_filename: &str, fp: u64, index_gran: u64) -> io::Result<()> {
-    let raw_infile = File::open(in_filename)?;
+    let infile = File::open(in_filename)?;
     let outfile = BufWriter::new(OpenOptions::new()
         .write(true)
         .create_new(true)
         .open(out_filename)?);
 
-    println!("Estimating lines");
-    let n = estimate_lines(&raw_infile)?;
-    println!("Estimate {} items", n);
-    let mut infile = BufReader::new(raw_infile);
-
-    println!("Estimated memory use: {} MB.", (n * 8) / (1024 * 1024));
+    let n = estimate_lines(&infile)?;
+    println!("Estimated memory use for {} items: {} MB.", n, (n * 8) / (1024 * 1024));
     if n > 1024 * 1024 * 2 {
         println!("^C now and get a better computer if memory constrained");
         thread::sleep(time::Duration::from_millis(4000));
@@ -96,7 +91,13 @@ fn create_gcs(in_filename: &str, out_filename: &str, fp: u64, index_gran: u64) -
     let start = Instant::now();
     let mut gcs = GCSBuilder::new(outfile, n, fp, index_gran).expect("Couldn't initialize builder");
 
+    // infile.lines(): 2.27 M/sec
+    // infile.read_line(): 2.56 M/sec (by saving String allocation)
+    // infile.read_until(): 2.85 M/sec (by avoiding UTF-8 processing)
+    // infile.take(128).read_until(): 2.7 M/sec
     let mut line: Vec<u8> = Vec::with_capacity(128);
+    let mut infile = BufReader::new(infile);
+
     while infile
         .by_ref()
         .take(128)
