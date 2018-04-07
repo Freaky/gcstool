@@ -2,6 +2,7 @@ use std::io;
 use std::io::SeekFrom;
 
 use byteorder::{BigEndian, ReadBytesExt, WriteBytesExt};
+use rayon::prelude::*;
 
 use bitio::*;
 
@@ -86,7 +87,7 @@ impl<T: io::Write> GCSBuilder<T> {
             *v %= self.n * self.p;
         }
 
-        self.values.sort_unstable();
+        self.values.par_sort_unstable();
         self.values.dedup();
 
         let index_points = self.values.len() / self.index_granularity;

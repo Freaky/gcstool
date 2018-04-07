@@ -9,6 +9,7 @@ use std::time::Instant;
 extern crate byteorder;
 extern crate memchr;
 extern crate sha1;
+extern crate rayon;
 
 #[macro_use]
 extern crate clap;
@@ -67,11 +68,12 @@ fn query_gcs<R: io::Read + io::Seek>(test_in: R) {
         let hash = sha.digest().to_string();
         let val = u64_from_hex(&hash.as_bytes()[0..15]).unwrap_or(0);
         let start = Instant::now();
-        println!("Search: {:?}", searcher.exists(val));
+        let exists = searcher.exists(val).expect("Error in search");
         let elapsed = start.elapsed();
         println!(
-            "Elapsed: {}",
-            (elapsed.as_secs() as f64) + (f64::from(elapsed.subsec_nanos()) / 1_000_000_000.0)
+            "{} in {:.1}ms",
+            if exists { "Found" } else { "Not found" },
+            (elapsed.as_secs() as f64) * 1000.0 + (f64::from(elapsed.subsec_nanos()) / 1_000_000.0)
         )
     }
 }
