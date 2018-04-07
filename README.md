@@ -89,8 +89,8 @@ More complex index encoding is possible to make it smaller, but since a default 
 for even 500 million items is just 16MB it barely seems worth the effort.
 
 
-1: http://giovanni.bajo.it/post/47119962313/golomb-coded-sets-smaller-than-bloom-filters
-2: https://en.wikipedia.org/wiki/Bloom_filter
-3: https://haveibeenpwned.com/Passwords
-4: https://hur.st/bloomfilter/?n=501652074&p=500000&m=&k=
-5: https://hur.st/bloomfilter/?n=501652074&p=50M&m=&k=
+[1]: http://giovanni.bajo.it/post/47119962313/golomb-coded-sets-smaller-than-bloom-filters
+[2]: https://en.wikipedia.org/wiki/Bloom_filter
+[3]: https://haveibeenpwned.com/Passwords
+[4]: https://hur.st/bloomfilter/?n=501652074&p=500000&m=&k=
+[5]: https://hur.st/bloomfilter/?n=501652074&p=50M&m=&k=
