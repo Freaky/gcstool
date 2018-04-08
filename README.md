@@ -78,7 +78,7 @@ because you've distributed your n items in n*p buckets, so a bucket has just a
 1-in-p probability of being filled by accident by any given item.
 
 Now it's just a matter of storing each offset efficiently.  We use a subset variant of
-[Golomb coding][6] called Rice coding - divmod by log2(p), store the quotient in unary
+[Golomb coding][6] called Rice coding - divmod by p, store the quotient in unary
 (0 = 0, 1 = 1, 2 = 11, 3 = 111, etc), and store the remainder in log2(p) bits.
 
 Then we simply store an index indicating what and where every `n`th element is so we
