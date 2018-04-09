@@ -1,10 +1,10 @@
-use std::io;
-use std::io::prelude::*;
-use std::io::SeekFrom;
-use std::io::{BufReader, BufWriter};
 use std::fs::{File, OpenOptions};
-use std::{thread, time};
+use std::io;
+use std::io::SeekFrom;
+use std::io::prelude::*;
+use std::io::{BufReader, BufWriter};
 use std::time::Instant;
+use std::{thread, time};
 
 extern crate byteorder;
 extern crate memchr;
@@ -13,6 +13,8 @@ extern crate sha1;
 
 #[macro_use]
 extern crate clap;
+
+use memchr::Memchr;
 
 mod bitio;
 mod gcs;
@@ -31,7 +33,7 @@ fn estimate_lines(mut inp: &std::fs::File) -> io::Result<u64> {
     inp.read_exact(&mut buffer)?;
     inp.seek(SeekFrom::Start(0))?;
 
-    let sample = buffer.iter().filter(|b| **b == b'\n').count() as u64;
+    let sample = Memchr::new(b'\n', &buffer).count() as u64;
 
     Ok(sample * (size / (sample_size as u64)))
 }
