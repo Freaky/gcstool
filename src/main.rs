@@ -3,6 +3,7 @@ use std::io;
 use std::io::SeekFrom;
 use std::io::prelude::*;
 use std::io::{BufReader, BufWriter};
+use std::path::Path;
 use std::time::Instant;
 use std::{thread, time};
 
@@ -55,16 +56,17 @@ fn u64_from_hex(src: &[u8]) -> Option<u64> {
     Some(result)
 }
 
-fn query_gcs<R: io::Read + io::Seek>(test_in: R) {
-    let test_inbuf = BufReader::new(test_in);
-    let mut searcher = GCSReader::new(test_inbuf);
-    searcher.initialize().expect("GCD initialize failure");
+fn query_gcs<P: AsRef<Path>>(filename: P) -> io::Result<()> {
+    let file = File::open(filename)?;
+    let file = BufReader::new(file);
+    let mut searcher = GCSReader::new(file);
+    searcher.initialize()?;
 
     let stdin = io::stdin();
 
     for line in stdin.lock().lines() {
         let mut sha = sha1::Sha1::new();
-        let line = line.unwrap();
+        let line = line?;
         println!("Search for '{}'", line);
         sha.update(line.as_bytes());
         let hash = sha.digest().to_string();
@@ -78,9 +80,16 @@ fn query_gcs<R: io::Read + io::Seek>(test_in: R) {
             (elapsed.as_secs() as f64) * 1000.0 + (f64::from(elapsed.subsec_nanos()) / 1_000_000.0)
         )
     }
+
+    Ok(())
 }
 
-fn create_gcs(in_filename: &str, out_filename: &str, fp: u64, index_gran: u64) -> io::Result<()> {
+fn create_gcs<P: AsRef<Path>>(
+    in_filename: P,
+    out_filename: P,
+    fp: u64,
+    index_gran: u64,
+) -> io::Result<()> {
     let infile = File::open(in_filename)?;
     let outfile = BufWriter::new(OpenOptions::new()
         .write(true)
@@ -162,8 +171,8 @@ fn main() {
 
     match args.subcommand() {
         ("create", Some(matches)) => {
-            let in_filename = matches.value_of("INPUT").unwrap();
-            let out_filename = matches.value_of("OUTPUT").unwrap();
+            let in_filename = matches.value_of_os("INPUT").unwrap();
+            let out_filename = matches.value_of_os("OUTPUT").unwrap();
 
             let fp = value_t!(matches, "probability", u64).unwrap_or_else(|e| e.exit());
             let index_gran =
@@ -176,11 +185,16 @@ fn main() {
             }
         }
         ("query", Some(matches)) => {
-            let filename = matches.value_of("FILE").unwrap();
+            let filename = matches.value_of_os("FILE").unwrap();
 
-            let outfile = File::open(filename).expect("can't open input");
-            query_gcs(outfile);
+            if let Err(e) = query_gcs(filename) {
+                writeln!(stderr, "Error: {}", e).ok();
+
+                std::process::exit(1);
+            }
         }
-        _ => { /* not reached */ }
+        _ => {
+            panic!("You're not supposed to get here.  Hi.");
+        }
     }
 }
