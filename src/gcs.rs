@@ -139,6 +139,7 @@ impl<T: io::Write> GCSBuilder<T> {
         self.io.write_u64::<BigEndian>(end_of_data as u64)?;
         self.io.write_u64::<BigEndian>(index.len() as u64)?;
         self.io.write_all(GCS_MAGIC)?;
+        self.io.flush()?;
 
         Ok(())
     }
