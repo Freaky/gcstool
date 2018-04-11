@@ -1,48 +1,5 @@
 use std::io;
 
-pub struct BitReader {
-    buf: [u8; 1],
-    mask: u8,
-}
-
-impl BitReader {
-    pub fn new() -> BitReader {
-        BitReader { buf: [0], mask: 0 }
-    }
-
-    #[allow(dead_code)]
-    pub fn reset(&mut self) {
-        self.buf[0] = 0;
-        self.mask = 0;
-    }
-
-    pub fn read_bit<T: io::Read>(&mut self, mut io: T) -> io::Result<u8> {
-        if self.mask == 0 {
-            io.read_exact(&mut self.buf)?;
-            self.mask = 128;
-        }
-
-        let bit = if self.mask & self.buf[0] > 0 { 1 } else { 0 };
-
-        self.mask >>= 1;
-
-        Ok(bit)
-    }
-
-    pub fn read_bits_u64<T: io::Read>(&mut self, mut io: T, nbits: u8) -> io::Result<u64> {
-        assert!(nbits < 64);
-
-        let mut bits: u64 = 0;
-
-        for i in 0..nbits {
-            let bit = u64::from(self.read_bit(&mut io)?);
-            bits += (1 << (nbits - i - 1)) * bit;
-        }
-
-        Ok(bits)
-    }
-}
-
 const MASKS: [u64; 65] = [
     0x0,
     0x1,
@@ -110,6 +67,55 @@ const MASKS: [u64; 65] = [
     0x7fffffffffffffff,
     0xffffffffffffffff,
 ];
+
+pub struct BitReader {
+    buffer: [u8; 1],
+    unused: u8,
+}
+
+impl BitReader {
+    pub fn new() -> Self {
+        Self {
+            buffer: [0],
+            unused: 0,
+        }
+    }
+
+    #[allow(dead_code)]
+    pub fn reset(&mut self) {
+        self.buffer[0] = 0;
+        self.unused = 0;
+    }
+
+    pub fn read_bit<T: io::Read>(&mut self, mut io: T) -> io::Result<u8> {
+        let bit = self.read_bits_u64(&mut io, 1)?;
+        Ok(bit as u8)
+    }
+
+    pub fn read_bits_u64<T: io::Read>(&mut self, mut io: T, nbits: u8) -> io::Result<u64> {
+        assert!(nbits < 64);
+
+        let mut ret: u64 = 0;
+        let mut rbits = nbits;
+
+        while rbits > self.unused {
+            ret |= (self.buffer[0] as u64) << (rbits - self.unused);
+            rbits -= self.unused;
+
+            io.read_exact(&mut self.buffer)?;
+
+            self.unused = 8;
+        }
+
+        if rbits > 0 {
+            ret |= (self.buffer[0] as u64) >> (self.unused - rbits);
+            self.buffer[0] &= MASKS[(self.unused - rbits) as usize] as u8;
+            self.unused -= rbits;
+        }
+
+        Ok(ret)
+    }
+}
 
 pub struct BitWriter {
     buffer: u64,
