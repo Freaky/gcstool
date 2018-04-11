@@ -93,7 +93,7 @@ impl BitReader {
     }
 
     pub fn read_bits_u64<T: io::Read>(&mut self, mut io: T, nbits: u8) -> io::Result<u64> {
-        assert!(nbits < 64);
+        assert!(nbits <= 64);
 
         let mut ret: u64 = 0;
         let mut rbits = nbits;
