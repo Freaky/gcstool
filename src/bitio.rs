@@ -68,14 +68,16 @@ const MASKS: [u64; 65] = [
     0b1111111111111111111111111111111111111111111111111111111111111111,
 ];
 
-pub struct BitReader {
+pub struct BitReader<R> {
+    inner: R,
     buffer: [u8; 1],
     unused: u8,
 }
 
-impl BitReader {
-    pub fn new() -> Self {
+impl<R: io::Read> BitReader<R> {
+    pub fn new(inner: R) -> Self {
         Self {
+            inner,
             buffer: [0],
             unused: 0,
         }
@@ -87,12 +89,12 @@ impl BitReader {
         self.unused = 0;
     }
 
-    pub fn read_bit<T: io::Read>(&mut self, mut io: T) -> io::Result<u8> {
-        let bit = self.read_bits_u64(&mut io, 1)?;
+    pub fn read_bit(&mut self) -> io::Result<u8> {
+        let bit = self.read_bits_u64(1)?;
         Ok(bit as u8)
     }
 
-    pub fn read_bits_u64<T: io::Read>(&mut self, mut io: T, nbits: u8) -> io::Result<u64> {
+    pub fn read_bits_u64(&mut self, nbits: u8) -> io::Result<u64> {
         assert!(nbits <= 64);
 
         let mut ret: u64 = 0;
@@ -102,7 +104,7 @@ impl BitReader {
             ret |= (self.buffer[0] as u64) << (rbits - self.unused);
             rbits -= self.unused;
 
-            io.read_exact(&mut self.buffer)?;
+            self.inner.read_exact(&mut self.buffer)?;
 
             self.unused = 8;
         }
@@ -115,34 +117,43 @@ impl BitReader {
 
         Ok(ret)
     }
+
+    pub fn get_ref(&self) -> &R {
+        &self.inner
+    }
+
+    pub fn get_mut(&mut self) -> &mut R {
+        &mut self.inner
+    }
+
+    pub fn into_inner(self) -> R {
+        self.inner
+    }
 }
 
-pub struct BitWriter {
+pub struct BitWriter<W> {
+    inner: W,
     buffer: u64,
     unused: u64,
 }
 
-impl BitWriter {
-    pub fn new() -> Self {
+impl<W: io::Write> BitWriter<W> {
+    pub fn new(inner: W) -> Self {
         Self {
+            inner,
             buffer: 0,
             unused: 8,
         }
     }
 
     #[allow(dead_code)]
-    pub fn write_bit<T: io::Write>(&mut self, mut io: T, bit: u8) -> io::Result<()> {
+    pub fn write_bit(&mut self, bit: u8) -> io::Result<()> {
         assert!(bit <= 1);
-        self.write_bits(&mut io, 1, bit as u64)?;
+        self.write_bits(1, bit as u64)?;
         Ok(())
     }
 
-    pub fn write_bits<T: io::Write>(
-        &mut self,
-        mut io: T,
-        nbits: u8,
-        value: u64,
-    ) -> io::Result<usize> {
+    pub fn write_bits(&mut self, nbits: u8, value: u64) -> io::Result<usize> {
         assert!(nbits <= 64);
 
         let mut nbits_remaining = nbits as u64;
@@ -152,7 +163,7 @@ impl BitWriter {
             self.buffer = (self.buffer << self.unused) | (value >> (nbits_remaining - self.unused));
 
             // write low byte
-            io.write_all(&[self.buffer as u8])?;
+            self.inner.write_all(&[self.buffer as u8])?;
 
             nbits_remaining -= self.unused;
             value &= MASKS[nbits_remaining as usize];
@@ -167,14 +178,27 @@ impl BitWriter {
         Ok(nbits as usize)
     }
 
-    pub fn flush<T: io::Write>(&mut self, mut io: T) -> io::Result<usize> {
+    pub fn flush(&mut self) -> io::Result<usize> {
         if self.unused != 8 {
-            io.write_all(&[(self.buffer << self.unused) as u8])?;
+            self.inner.write_all(&[(self.buffer << self.unused) as u8])?;
+            self.inner.flush()?;
             let written = self.unused;
             self.unused = 8;
             Ok(written as usize)
         } else {
             Ok(0)
         }
+    }
+
+    pub fn get_ref(&self) -> &W {
+        &self.inner
+    }
+
+    pub fn get_mut(&mut self) -> &mut W {
+        &mut self.inner
+    }
+
+    pub fn into_inner(self) -> W {
+        self.inner
     }
 }
