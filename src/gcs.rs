@@ -221,14 +221,7 @@ impl<R: io::Read + io::Seek> GCSReader<R> {
         };
 
         let bit_pos = self.index[nearest].1;
-        let bit_offset = (bit_pos % 8) as u8;
-        let byte_offset = bit_pos / 8;
-
-        self.inner.get_mut().seek(SeekFrom::Start(byte_offset))?;
-        self.inner.reset();
-        if bit_pos > 0 {
-            self.inner.read_bits_u64(bit_offset)?;
-        }
+        self.inner.seek(SeekFrom::Start(bit_pos))?;
 
         let mut last = self.index[nearest].0;
         while last < h {
@@ -236,7 +229,7 @@ impl<R: io::Read + io::Seek> GCSReader<R> {
                 last += self.p;
             }
 
-            last += self.inner.read_bits_u64(self.log2p)?;
+            last += self.inner.read_bits(self.log2p)?;
         }
 
         Ok(last == h)

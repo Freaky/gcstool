@@ -1,4 +1,6 @@
 use std::io;
+use std::io::SeekFrom;
+use std::io::{Error, ErrorKind};
 
 const MASKS: [u64; 65] = [
     0,
@@ -90,11 +92,11 @@ impl<R: io::Read> BitReader<R> {
     }
 
     pub fn read_bit(&mut self) -> io::Result<u8> {
-        let bit = self.read_bits_u64(1)?;
+        let bit = self.read_bits(1)?;
         Ok(bit as u8)
     }
 
-    pub fn read_bits_u64(&mut self, nbits: u8) -> io::Result<u64> {
+    pub fn read_bits(&mut self, nbits: u8) -> io::Result<u64> {
         assert!(nbits <= 64);
 
         let mut ret: u64 = 0;
@@ -128,6 +130,42 @@ impl<R: io::Read> BitReader<R> {
 
     pub fn into_inner(self) -> R {
         self.inner
+    }
+}
+
+impl<R: io::Read + io::Seek> BitReader<R> {
+    pub fn seek(&mut self, pos: SeekFrom) -> io::Result<u64> {
+        let result: u64;
+        match pos {
+            SeekFrom::Start(pos) => {
+                self.reset();
+                self.inner.seek(SeekFrom::Start(pos / 8))?;
+                self.read_bits((pos % 8) as u8)?;
+                Ok(pos)
+            }
+            SeekFrom::End(pos) => {
+                self.reset();
+                if pos < 0 {
+                    let mut bypos = pos / 8;
+                    let bipos = 8 - (pos % 8);
+                    if bipos > 0 {
+                        bypos -= 1;
+                    }
+                    let ipos = self.inner.seek(SeekFrom::End(bypos))?;
+                    self.read_bits(bipos as u8)?;
+                    Ok(ipos + (pos % 8) as u64)
+                } else {
+                    Err(Error::new(
+                        ErrorKind::Other,
+                        "SeekFrom::End(seeking past end of file not yet supported",
+                    ))
+                }
+            }
+            SeekFrom::Current(pos) => Err(Error::new(
+                ErrorKind::Other,
+                "SeekFrom::Current not yet supported",
+            )),
+        }
     }
 }
 
