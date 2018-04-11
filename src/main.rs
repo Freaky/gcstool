@@ -20,9 +20,11 @@ use memchr::Memchr;
 mod bitio;
 mod gcs;
 mod line_reader;
+mod status;
 
 use gcs::*;
 use line_reader::*;
+use status::Status;
 
 const ESTIMATE_LIMIT: u64 = 1024 * 1024 * 16;
 
@@ -91,10 +93,13 @@ fn create_gcs<P: AsRef<Path>>(
     index_gran: u64,
 ) -> io::Result<()> {
     let infile = File::open(in_filename)?;
-    let outfile = BufWriter::new(OpenOptions::new()
-        .write(true)
-        .create_new(true)
-        .open(out_filename)?);
+    let outfile = BufWriter::with_capacity(
+        1024 * 256,
+        OpenOptions::new()
+            .write(true)
+            .create_new(true)
+            .open(out_filename)?,
+    );
 
     let n = estimate_lines(&infile)?;
     println!(
@@ -107,6 +112,8 @@ fn create_gcs<P: AsRef<Path>>(
         thread::sleep(time::Duration::from_millis(4000));
     }
 
+    let mut status = Status::new(1);
+
     let mut count = 0;
     let start = Instant::now();
     let mut gcs = GCSBuilder::new(outfile, n, fp, index_gran).expect("Couldn't initialize builder");
@@ -117,6 +124,7 @@ fn create_gcs<P: AsRef<Path>>(
     // infile.take(128).read_until(): 2.7 M/sec
     // LineReader::next_line(): 3.8 M/sec
 
+    status.stage_work("Hashing", n);
     let mut reader = LineReader::new(infile);
     while let Some(line) = reader.next_line() {
         let line = line.unwrap();
@@ -124,6 +132,8 @@ fn create_gcs<P: AsRef<Path>>(
             gcs.add(hash);
 
             count += 1;
+            status.incr();
+        /*
             if count % 10_000_000_usize == 0 {
                 println!(
                     " >> {} of {}, {:.1}% ({}/sec)",
@@ -135,14 +145,16 @@ fn create_gcs<P: AsRef<Path>>(
                         .unwrap_or(0)
                 );
             }
+            */
         } else {
             println!("Skipping line: {:?}", line);
         }
     }
 
-    println!("Writing out GCS");
-    gcs.finish()?;
-    println!("Done in {} seconds", start.elapsed().as_secs());
+    // println!("Writing out GCS");
+    gcs.finish(&mut status)?;
+    status.done();
+    // println!("Done in {} seconds", start.elapsed().as_secs());
 
     Ok(())
 }
