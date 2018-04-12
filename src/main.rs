@@ -114,8 +114,6 @@ fn create_gcs<P: AsRef<Path>>(
 
     let mut status = Status::new(1);
 
-    let mut count = 0;
-    let start = Instant::now();
     let mut gcs = GCSBuilder::new(outfile, n, fp, index_gran).expect("Couldn't initialize builder");
 
     // infile.lines(): 2.27 M/sec
@@ -131,30 +129,14 @@ fn create_gcs<P: AsRef<Path>>(
         if let Some(hash) = u64_from_hex(&line[0..15]) {
             gcs.add(hash);
 
-            count += 1;
             status.incr();
-        /*
-            if count % 10_000_000_usize == 0 {
-                println!(
-                    " >> {} of {}, {:.1}% ({}/sec)",
-                    count,
-                    n,
-                    (count as f64 / n as f64) * 100.0,
-                    count
-                        .checked_div(start.elapsed().as_secs() as usize)
-                        .unwrap_or(0)
-                );
-            }
-            */
         } else {
             println!("Skipping line: {:?}", line);
         }
     }
 
-    // println!("Writing out GCS");
     gcs.finish(&mut status)?;
     status.done();
-    // println!("Done in {} seconds", start.elapsed().as_secs());
 
     Ok(())
 }

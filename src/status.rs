@@ -1,4 +1,4 @@
-use std::time::{Duration, Instant};
+use std::time::Instant;
 
 #[derive(Default)]
 pub struct Status {
@@ -51,6 +51,7 @@ impl Status {
         );
     }
 
+    #[allow(dead_code)]
     pub fn set_work_done(&mut self, count: u64) {
         self.done_count = count;
 
@@ -72,17 +73,14 @@ impl Status {
     }
 
     pub fn finish_stage(&mut self) {
-        match self.stage_name {
-            Some(ref stage) => {
-                let elapsed = self.stage_start.unwrap().elapsed();
-                println!(
-                    "{} complete in {:.2}s",
-                    stage,
-                    (elapsed.as_secs() as f64)
-                        + (f64::from(elapsed.subsec_nanos()) / 1_000_000_000_f64)
-                );
-            }
-            None => {}
+        if let Some(ref stage) = self.stage_name {
+            let elapsed = self.stage_start.unwrap().elapsed();
+            println!(
+                "{} complete in {:.2}s",
+                stage,
+                (elapsed.as_secs() as f64)
+                    + (f64::from(elapsed.subsec_nanos()) / 1_000_000_000_f64)
+            );
         }
         self.stage_name = None;
     }

@@ -4,7 +4,7 @@ use std::io::SeekFrom;
 use byteorder::{BigEndian, ReadBytesExt, WriteBytesExt};
 use rayon::prelude::*;
 
-use bitio::*;
+use bitio::{BitReader, BitWriter};
 use status::Status;
 
 const GCS_MAGIC: &[u8; 8] = b"[GCS:v0]";

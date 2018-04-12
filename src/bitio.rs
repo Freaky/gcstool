@@ -120,6 +120,7 @@ impl<R: io::Read> BitReader<R> {
         Ok(ret)
     }
 
+    #[allow(dead_code)]
     pub fn get_ref(&self) -> &R {
         &self.inner
     }
@@ -128,6 +129,7 @@ impl<R: io::Read> BitReader<R> {
         &mut self.inner
     }
 
+    #[allow(dead_code)]
     pub fn into_inner(self) -> R {
         self.inner
     }
@@ -135,7 +137,6 @@ impl<R: io::Read> BitReader<R> {
 
 impl<R: io::Read + io::Seek> BitReader<R> {
     pub fn seek(&mut self, pos: SeekFrom) -> io::Result<u64> {
-        let result: u64;
         match pos {
             SeekFrom::Start(pos) => {
                 self.reset();
@@ -161,7 +162,7 @@ impl<R: io::Read + io::Seek> BitReader<R> {
                     ))
                 }
             }
-            SeekFrom::Current(pos) => Err(Error::new(
+            SeekFrom::Current(_pos) => Err(Error::new(
                 ErrorKind::Other,
                 "SeekFrom::Current not yet supported",
             )),
@@ -228,10 +229,12 @@ impl<W: io::Write> BitWriter<W> {
         }
     }
 
+    #[allow(dead_code)]
     pub fn get_ref(&self) -> &W {
         &self.inner
     }
 
+    #[allow(dead_code)]
     pub fn get_mut(&mut self) -> &mut W {
         &mut self.inner
     }
