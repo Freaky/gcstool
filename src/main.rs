@@ -75,11 +75,11 @@ fn query_gcs<P: AsRef<Path>>(filename: P) -> io::Result<()> {
     stdout.flush()?;
 
     for line in stdin.lock().lines() {
-        let mut sha = sha1::Sha1::new();
         let line = line?;
-        sha.update(line.as_bytes());
-        let hash = sha.digest().to_string();
+
+        let hash = sha1::Sha1::from(&line).digest().to_string();
         let val = u64_from_hex(&hash.as_bytes()[0..15]).expect("Error in... SHA1. What.");
+
         let start = Instant::now();
         let exists = searcher.exists(val).expect("Error in search");
         let elapsed = start.elapsed();
