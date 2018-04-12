@@ -201,7 +201,6 @@ impl<W: io::Write> BitWriter<W> {
         while nbits_remaining >= self.unused {
             self.buffer = (self.buffer << self.unused) | (value >> (nbits_remaining - self.unused));
 
-            // write low byte
             self.inner.write_all(&[self.buffer as u8])?;
 
             nbits_remaining -= self.unused;
