@@ -84,9 +84,8 @@ fn query_gcs<P: AsRef<Path>>(filename: P) -> io::Result<()> {
         let exists = searcher.exists(val).expect("Error in search");
         let elapsed = start.elapsed();
         println!(
-            "{} '{}' in {:.1}ms",
-            if exists { "Found" } else { "Did not find" },
-            line,
+            "{} in {:.1}ms",
+            if exists { "Found" } else { "Not found" },
             (elapsed.as_secs() as f64) * 1000.0 + (f64::from(elapsed.subsec_nanos()) / 1_000_000.0)
         );
         print!("> ");
