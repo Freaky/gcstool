@@ -64,24 +64,35 @@ fn query_gcs<P: AsRef<Path>>(filename: P) -> io::Result<()> {
     let mut searcher = GCSReader::new(file);
     searcher.initialize()?;
 
+    let mut stdout = io::stdout();
     let stdin = io::stdin();
+
+    println!(
+        "Ready for queries on {} items with a 1 in {} false-positive rate.  ^D to exit.",
+        searcher.n, searcher.p
+    );
+    print!("> ");
+    stdout.flush()?;
 
     for line in stdin.lock().lines() {
         let mut sha = sha1::Sha1::new();
         let line = line?;
-        println!("Search for '{}'", line);
         sha.update(line.as_bytes());
         let hash = sha.digest().to_string();
-        let val = u64_from_hex(&hash.as_bytes()[0..15]).unwrap_or(0);
+        let val = u64_from_hex(&hash.as_bytes()[0..15]).expect("Error in... SHA1. What.");
         let start = Instant::now();
         let exists = searcher.exists(val).expect("Error in search");
         let elapsed = start.elapsed();
         println!(
-            "{} in {:.1}ms",
-            if exists { "Found" } else { "Not found" },
+            "{} '{}' in {:.1}ms",
+            if exists { "Found" } else { "Did not find" },
+            line,
             (elapsed.as_secs() as f64) * 1000.0 + (f64::from(elapsed.subsec_nanos()) / 1_000_000.0)
-        )
+        );
+        print!("> ");
+        stdout.flush()?;
     }
+    println!("Exit");
 
     Ok(())
 }

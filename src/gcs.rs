@@ -155,8 +155,8 @@ impl<T: io::Write> GCSBuilder<T> {
 
 pub struct GCSReader<R> {
     inner: BitReader<R>,
-    n: u64,
-    p: u64,
+    pub n: u64,
+    pub p: u64,
     end_of_data: u64,
     index_len: u64,
     index: Vec<(u64, u64)>,
