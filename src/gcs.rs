@@ -1,5 +1,6 @@
 use std::io;
 use std::io::SeekFrom;
+use std::io::{Error, ErrorKind};
 
 use byteorder::{BigEndian, ReadBytesExt, WriteBytesExt};
 use rayon::prelude::*;
@@ -77,8 +78,6 @@ impl<T: io::Write> GCSBuilder<T> {
     }
 
     pub fn finish(mut self, status: &mut Status) -> io::Result<()> {
-        use std::io::{Error, ErrorKind};
-
         self.n = self.values.len() as u64;
         let np = match self.n.checked_mul(self.p) {
             Some(np) => np,
@@ -141,10 +140,8 @@ impl<T: io::Write> GCSBuilder<T> {
         status.finish_stage();
 
         // Write our footer
-        // [delim] N, P, index position in bytes, index size in entries [delim]
-        // 6*8=48 bytes
-        assert!(GCS_MAGIC.len() == 8);
-        self.io.write_all(GCS_MAGIC)?;
+        // N, P, index position in bytes, index size in entries [magic]
+        // 5*8=40 bytes
         self.io.write_u64::<BigEndian>(self.n)?;
         self.io.write_u64::<BigEndian>(self.p)?;
         self.io.write_u64::<BigEndian>(end_of_data as u64)?;
@@ -181,18 +178,21 @@ impl<R: io::Read + io::Seek> GCSReader<R> {
 
     pub fn initialize(&mut self) -> io::Result<()> {
         let io = self.inner.get_mut();
-        io.seek(SeekFrom::End(-48))?;
-        let mut hdr = [0; 8];
-        io.read_exact(&mut hdr)?;
-        assert!(hdr == *GCS_MAGIC);
+        io.seek(SeekFrom::End(-40))?;
+
         self.n = io.read_u64::<BigEndian>()?;
         self.p = io.read_u64::<BigEndian>()?;
+
         self.log2p = (self.p as f64).log2().ceil().trunc() as u8;
+
         self.end_of_data = io.read_u64::<BigEndian>()?;
         self.index_len = io.read_u64::<BigEndian>()?;
+
         let mut hdr = [0; 8];
         io.read_exact(&mut hdr)?;
-        assert!(hdr == *GCS_MAGIC);
+        if hdr != *GCS_MAGIC {
+            return Err(Error::new(ErrorKind::Other, "Not a GCS file"));
+        }
 
         io.seek(SeekFrom::Start(self.end_of_data))?;
 
@@ -203,11 +203,6 @@ impl<R: io::Read + io::Seek> GCSReader<R> {
             self.index
                 .push((io.read_u64::<BigEndian>()?, io.read_u64::<BigEndian>()?));
         }
-
-        println!(
-            "Initialised GCS. n={}, p={}, index={}",
-            self.n, self.p, self.index_len
-        );
 
         Ok(())
     }
