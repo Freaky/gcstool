@@ -52,17 +52,20 @@ Contrast this with a [2.15 GiB Bloom filter][5].
 We can now query a database for for known passwords:
 
     % gcstool query pwned-passwords-2.0-p50m.gcs
-    Initialised GCS. n=501636842, p=50000000, index=489879
+    Ready for queries on 501636842 items with a 1 in 50000000 false-positive rate.  ^D to exit.
     > password
-    Found in 0.2ms
+    Found in 0.3ms
     > not a leaked password
-    Not found in 0.5ms
-    > ilovedogs
-    Found in 27.1ms
+    Not found in 1.7ms
+    > I love dogs
+    Found in 0.7ms
+    > I guess it works
+    Not found in 0.1ms
 
 Yay.
 
-Integrating it into your website is left as an exercise.
+Integrating it into your website is left as an exercise right now.  Eventually I'll
+factor this out into a library and sort out a Rubygem.
 
 
 ### How?
