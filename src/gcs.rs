@@ -122,8 +122,6 @@ impl<T: io::Write> GCSBuilder<T> {
             }
         }
 
-        assert!(index.len() == index_points);
-
         let end_of_data = total_bits + encoder.finish()? as u64;
         assert!(end_of_data % 8 == 0);
 
@@ -198,6 +196,7 @@ impl<R: io::Read + io::Seek> GCSReader<R> {
 
         // slurp in the index.
         self.index.reserve(self.index_len as usize);
+        self.index.push((0, 0)); // implied
 
         for _ in 0..self.index_len {
             self.index
@@ -210,15 +209,15 @@ impl<R: io::Read + io::Seek> GCSReader<R> {
     pub fn exists(&mut self, target: u64) -> io::Result<bool> {
         let h = target % (self.n * self.p);
 
-        let nearest = match self.index.binary_search_by_key(&h, |&(v, _p)| v) {
+        let entry = match self.index.binary_search_by_key(&h, |&(v, _p)| v) {
             Ok(_) => return Ok(true),
-            Err(e) => e.saturating_sub(1),
+            Err(e) => self.index[e.saturating_sub(1)],
         };
+        let mut last = entry.0;
+        let bit_pos = entry.1;
 
-        let bit_pos = self.index[nearest].1;
         self.inner.seek(SeekFrom::Start(bit_pos))?;
 
-        let mut last = self.index[nearest].0;
         while last < h {
             while self.inner.read_bit()? == 1 {
                 last += self.p;
