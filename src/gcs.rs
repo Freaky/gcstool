@@ -195,7 +195,7 @@ impl<R: io::Read + io::Seek> GCSReader<R> {
         io.seek(SeekFrom::Start(self.end_of_data))?;
 
         // slurp in the index.
-        self.index.reserve(self.index_len as usize);
+        self.index.reserve(1 + self.index_len as usize);
         self.index.push((0, 0)); // implied
 
         for _ in 0..self.index_len {
