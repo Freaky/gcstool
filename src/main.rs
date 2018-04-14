@@ -78,7 +78,7 @@ fn query_gcs<P: AsRef<Path>>(filename: P) -> io::Result<()> {
         let line = line?;
 
         let hash = sha1::Sha1::from(&line).digest().to_string();
-        let val = u64_from_hex(&hash.as_bytes()[0..15]).expect("Error in... SHA1. What.");
+        let val = u64_from_hex(&hash.as_bytes()[0..16]).expect("Error in... SHA1. What.");
 
         let start = Instant::now();
         let exists = searcher.exists(val).expect("Error in search");
@@ -136,7 +136,7 @@ fn create_gcs<P: AsRef<Path>>(
     let mut reader = LineReader::new(infile);
     while let Some(line) = reader.next_line() {
         let line = line.unwrap();
-        if let Some(hash) = u64_from_hex(&line[0..15]) {
+        if let Some(hash) = u64_from_hex(&line[0..16]) {
             gcs.add(hash);
 
             status.incr();
