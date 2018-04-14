@@ -70,6 +70,7 @@ const MASKS: [u64; 65] = [
     0b1111111111111111111111111111111111111111111111111111111111111111,
 ];
 
+#[derive(Debug)]
 pub struct BitReader<R> {
     inner: R,
     buffer: [u8; 1],
@@ -170,6 +171,7 @@ impl<R: io::Read + io::Seek> BitReader<R> {
     }
 }
 
+#[derive(Debug)]
 pub struct BitWriter<W> {
     inner: W,
     buffer: u64,

@@ -151,6 +151,7 @@ impl<T: io::Write> GCSBuilder<T> {
     }
 }
 
+#[derive(Debug)]
 pub struct GCSReader<R> {
     inner: BitReader<R>,
     pub n: u64,
