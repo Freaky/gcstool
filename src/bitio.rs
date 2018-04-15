@@ -3,15 +3,7 @@ use std::io::SeekFrom;
 use std::io::{Error, ErrorKind};
 
 const MASKS: [u64; 9] = [
-    0,
-    0b1,
-    0b11,
-    0b111,
-    0b1111,
-    0b11111,
-    0b111111,
-    0b1111111,
-    0b11111111,
+    0, 0b1, 0b11, 0b111, 0b1111, 0b11111, 0b111111, 0b1111111, 0b11111111
 ];
 
 #[derive(Debug)]
@@ -179,6 +171,7 @@ impl<W: io::Write> BitWriter<W> {
             self.unused = 8;
             Ok(written as usize)
         } else {
+            self.inner.flush()?;
             Ok(0)
         }
     }
