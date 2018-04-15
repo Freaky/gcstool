@@ -142,11 +142,10 @@ impl<W: io::Write> BitWriter<W> {
         assert!(nbits <= 64);
 
         let mut nbits_remaining = nbits as u64;
-        let mut excess_bits: u64;
 
-        // let's write while we can fill up full bytes
-        while nbits_remaining >= self.unused {
-            excess_bits = nbits_remaining - self.unused;
+        // can we fill up a partial byte?
+        if nbits_remaining >= self.unused && self.unused < 8 {
+            let excess_bits = nbits_remaining - self.unused;
             self.buffer <<= self.unused;
             self.buffer |= (value >> excess_bits) & MASKS[self.unused as usize];
 
@@ -155,6 +154,12 @@ impl<W: io::Write> BitWriter<W> {
             nbits_remaining = excess_bits;
             self.unused = 8;
             self.buffer = 0;
+        }
+
+        // let's write while we can fill up full bytes
+        while nbits_remaining >= 8 {
+            nbits_remaining -= 8;
+            self.inner.write_all(&[(value >> nbits_remaining) as u8])?;
         }
 
         // put the remaining bits in the buffer
