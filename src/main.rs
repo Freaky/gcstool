@@ -117,7 +117,7 @@ fn create_gcs<P: AsRef<Path>>(
         n,
         (n * 8) / (1024 * 1024)
     );
-    if n > 1024 * 1024 * 1024 * 2 {
+    if n * 8 > 1024 * 1024 * 1024 * 2 {
         println!("^C now and get a better computer if memory constrained");
         thread::sleep(time::Duration::from_millis(4000));
     }
