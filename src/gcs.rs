@@ -101,25 +101,24 @@ impl<T: io::Write> GCSBuilder<T> {
         let mut index: Vec<(u64, u64)> = Vec::with_capacity(index_points);
         let mut encoder = GolombEncoder::new(self.io, self.p);
 
-        let mut diff: u64;
-        let mut last: u64 = 0;
         let mut total_bits: u64 = 0;
 
         status.stage("Encode");
 
-        for (i, v) in self.values.iter().enumerate() {
-            diff = v - last;
-            last = *v;
+        use std::iter;
 
-            let bits_written = encoder.encode(diff)?;
-
-            total_bits += bits_written as u64;
-
-            status.incr();
+        for (i, pair) in iter::once(&(0 as u64))
+            .chain(self.values.iter())
+            .zip(self.values.iter())
+            .enumerate()
+        {
+            total_bits += encoder.encode(pair.1 - pair.0)? as u64;
 
             if self.index_granularity > 0 && i > 0 && i % self.index_granularity == 0 {
-                index.push((*v, total_bits));
+                index.push((*pair.1, total_bits));
             }
+
+            status.incr();
         }
 
         let end_of_data = total_bits + encoder.finish()? as u64;
