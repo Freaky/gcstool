@@ -155,7 +155,7 @@ fn main() {
     let args = clap_app!(gcstool =>
         (@setting SubcommandRequiredElseHelp)
         (version: "0.0.1")
-        (author: "Thomas Hurst <tom@hir.st>")
+        (author: "Thomas Hurst <tom@hur.st>")
         (about: "Golomb Compressed Sets tool -- compact set membership database.")
         (@arg verbose: -v --verbose "Be verbose")
         (@subcommand create =>
