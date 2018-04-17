@@ -1,6 +1,7 @@
 use std::io;
 use std::io::SeekFrom;
 use std::io::{Error, ErrorKind};
+use std::iter;
 
 use byteorder::{BigEndian, ReadBytesExt, WriteBytesExt};
 use rayon::prelude::*;
@@ -96,16 +97,13 @@ impl<T: io::Write> GCSBuilder<T> {
         self.values.dedup();
 
         let index_points = self.values.len() / self.index_granularity;
-
-        // v => bit position
         let mut index: Vec<(u64, u64)> = Vec::with_capacity(index_points);
-        let mut encoder = GolombEncoder::new(self.io, self.p);
 
-        let mut total_bits: u64 = 0;
+        let mut encoder = GolombEncoder::new(self.io, self.p);
 
         status.stage("Encode");
 
-        use std::iter;
+        let mut total_bits: u64 = 0;
 
         for (i, pair) in iter::once(&(0 as u64))
             .chain(self.values.iter())
@@ -121,10 +119,7 @@ impl<T: io::Write> GCSBuilder<T> {
             status.incr();
         }
 
-        let end_of_data = total_bits + encoder.finish()? as u64;
-        assert!(end_of_data % 8 == 0);
-
-        let end_of_data = end_of_data / 8;
+        let end_of_data = (total_bits + encoder.finish()? as u64) / 8;
 
         self.io = encoder.into_inner();
 
