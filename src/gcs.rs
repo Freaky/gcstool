@@ -119,6 +119,9 @@ impl<T: io::Write> GCSBuilder<T> {
             status.incr();
         }
 
+        // encode a delimiting zero
+        total_bits += encoder.encode(0)? as u64;
+
         let end_of_data = (total_bits + encoder.finish()? as u64) / 8;
 
         self.io = encoder.into_inner();
@@ -214,11 +217,18 @@ impl<R: io::Read + io::Seek> GCSReader<R> {
         self.inner.seek(SeekFrom::Start(bit_pos))?;
 
         while last < h {
+            let mut diff = 0;
             while self.inner.read_bit()? == 1 {
-                last += self.p;
+                diff += self.p;
             }
 
-            last += self.inner.read_bits(self.log2p)?;
+            diff += self.inner.read_bits(self.log2p)?;
+            last += diff;
+
+            // End of file
+            if diff == 0 {
+                break;
+            }
         }
 
         Ok(last == h)
