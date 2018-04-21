@@ -6,7 +6,7 @@ use std::iter;
 use byteorder::{BigEndian, ReadBytesExt, WriteBytesExt};
 use rayon::prelude::*;
 
-use bitio::{BitReader, BitWriter};
+use bitrw::{BitReader, BitWriter};
 use status::Status;
 
 const GCS_MAGIC: &[u8; 8] = b"[GCS:v0]";

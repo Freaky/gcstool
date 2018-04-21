@@ -11,19 +11,19 @@ extern crate byteorder;
 extern crate memchr;
 extern crate rayon;
 extern crate sha1;
-
 #[macro_use]
 extern crate clap;
 
+extern crate bitrw;
+extern crate linereader;
+
+use linereader::LineReader;
 use memchr::Memchr;
 
-mod bitio;
 mod gcs;
-mod line_reader;
 mod status;
 
-use gcs::*;
-use line_reader::*;
+use gcs::{GCSBuilder, GCSReader};
 use status::Status;
 
 const ESTIMATE_LIMIT: u64 = 1024 * 1024 * 16;

@@ -9,6 +9,14 @@ byteorder = "1.2.2"
 memchr = "2"
 rayon = "1.0.1"
 
+[dependencies.linereader]
+version = "0.1.0"
+git = "https://github.com/Freaky/rust-linereader.git"
+
+[dependencies.bitrw]
+version = "0.1.0"
+git = "https://github.com/Freaky/rust-bitrw.git"
+
 [dependencies.clap]
 version = "~2.31.2"
 default-features = false
