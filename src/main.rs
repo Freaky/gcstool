@@ -154,7 +154,7 @@ fn create_gcs<P: AsRef<Path>>(
 fn main() {
     let args = clap_app!(gcstool =>
         (@setting SubcommandRequiredElseHelp)
-        (version: "0.0.1")
+        (version: "0.1.0")
         (author: "Thomas Hurst <tom@hur.st>")
         (about: "Golomb Compressed Sets tool -- compact set membership database.")
         (@arg verbose: -v --verbose "Be verbose")
