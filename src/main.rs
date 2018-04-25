@@ -2,7 +2,7 @@ use std::fs::{File, OpenOptions};
 use std::io;
 use std::io::SeekFrom;
 use std::io::prelude::*;
-use std::io::{BufReader, BufWriter};
+use std::io::{BufReader, BufWriter, Cursor};
 use std::path::Path;
 use std::time::Instant;
 use std::{thread, time};
@@ -17,6 +17,7 @@ extern crate clap;
 extern crate bitrw;
 extern crate linereader;
 
+use byteorder::{BigEndian, ReadBytesExt};
 use linereader::LineReader;
 use memchr::Memchr;
 
@@ -77,8 +78,7 @@ fn query_gcs<P: AsRef<Path>>(filename: P) -> io::Result<()> {
     for line in stdin.lock().lines() {
         let line = line?;
 
-        let hash = sha1::Sha1::from(&line).digest().to_string();
-        let val = u64_from_hex(&hash.as_bytes()[0..16]).expect("Error in... SHA1. What.");
+        let val = Cursor::new(sha1::Sha1::from(&line).digest().bytes()).read_u64::<BigEndian>()?;
 
         let start = Instant::now();
         let exists = searcher.exists(val).expect("Error in search");
