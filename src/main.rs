@@ -24,11 +24,10 @@ extern crate linereader;
 use byteorder::{BigEndian, ReadBytesExt};
 use linereader::LineReader;
 use memchr::Memchr;
+use sha1::Digest;
 
 mod gcs;
 mod status;
-
-use sha1::Digest;
 
 use gcs::{GCSBuilder, GCSReader};
 use status::Status;
