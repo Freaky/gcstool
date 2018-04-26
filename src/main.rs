@@ -68,6 +68,9 @@ impl HashType {
                     u64_from_hex(&s[0..16])
                 }
             }
+            HashType::Md5 => Cursor::new(md5::Md5::digest(&s).as_slice())
+                .read_u64::<BigEndian>()
+                .ok(),
             HashType::Sha1 => Cursor::new(sha1::Sha1::digest(&s).as_slice())
                 .read_u64::<BigEndian>()
                 .ok(),
@@ -75,9 +78,6 @@ impl HashType {
                 .read_u64::<BigEndian>()
                 .ok(),
             HashType::Sha2_512 => Cursor::new(sha2::Sha512::digest(&s).as_slice())
-                .read_u64::<BigEndian>()
-                .ok(),
-            HashType::Md5 => Cursor::new(md5::Md5::digest(&s).as_slice())
                 .read_u64::<BigEndian>()
                 .ok(),
             HashType::Blake2b => Cursor::new(blake2::Blake2b::digest(&s).as_slice())
