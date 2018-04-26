@@ -4,6 +4,7 @@ use std::io::SeekFrom;
 use std::io::prelude::*;
 use std::io::{BufReader, BufWriter, Cursor};
 use std::path::Path;
+use std::str::FromStr;
 use std::time::Instant;
 use std::{thread, time};
 
@@ -26,6 +27,41 @@ mod status;
 
 use gcs::{GCSBuilder, GCSReader};
 use status::Status;
+
+#[derive(Debug)]
+pub enum HashType {
+    Hex,
+    Sha1,
+}
+
+impl FromStr for HashType {
+    type Err = &'static str;
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        match s.to_lowercase().as_ref() {
+            "hex" => Ok(HashType::Hex),
+            "sha1" => Ok(HashType::Sha1),
+            _ => Err("no match"),
+        }
+    }
+}
+
+impl HashType {
+    fn digest(&self, s: &[u8]) -> Option<u64> {
+        match *self {
+            HashType::Hex => {
+                if s.len() < 16 {
+                    None
+                } else {
+                    u64_from_hex(&s[0..16])
+                }
+            }
+            HashType::Sha1 => Cursor::new(sha1::Sha1::from(&s).digest().bytes())
+                .read_u64::<BigEndian>()
+                .ok(),
+        }
+    }
+}
 
 const ESTIMATE_LIMIT: u64 = 1024 * 1024 * 16;
 
@@ -59,7 +95,7 @@ fn u64_from_hex(src: &[u8]) -> Option<u64> {
     Some(result)
 }
 
-fn query_gcs<P: AsRef<Path>>(filename: P) -> io::Result<()> {
+fn query_gcs<P: AsRef<Path>>(filename: P, hash: HashType) -> io::Result<()> {
     let file = File::open(filename)?;
     let file = BufReader::new(file);
     let mut searcher = GCSReader::new(file);
@@ -78,16 +114,19 @@ fn query_gcs<P: AsRef<Path>>(filename: P) -> io::Result<()> {
     for line in stdin.lock().lines() {
         let line = line?;
 
-        let val = Cursor::new(sha1::Sha1::from(&line).digest().bytes()).read_u64::<BigEndian>()?;
-
-        let start = Instant::now();
-        let exists = searcher.exists(val).expect("Error in search");
-        let elapsed = start.elapsed();
-        println!(
-            "{} in {:.1}ms",
-            if exists { "Found" } else { "Not found" },
-            (elapsed.as_secs() as f64) * 1000.0 + (f64::from(elapsed.subsec_nanos()) / 1_000_000.0)
-        );
+        if let Some(val) = hash.digest(line.as_bytes()) {
+            let start = Instant::now();
+            let exists = searcher.exists(val).expect("Error in search");
+            let elapsed = start.elapsed();
+            println!(
+                "{} in {:.1}ms",
+                if exists { "Found" } else { "Not found" },
+                (elapsed.as_secs() as f64) * 1000.0
+                    + (f64::from(elapsed.subsec_nanos()) / 1_000_000.0)
+            );
+        } else {
+            println!("Error parsing '{}'", line);
+        }
         print!("> ");
         stdout.flush()?;
     }
@@ -101,6 +140,7 @@ fn create_gcs<P: AsRef<Path>>(
     out_filename: P,
     fp: u64,
     index_gran: u64,
+    hash: HashType,
 ) -> io::Result<()> {
     let infile = File::open(in_filename)?;
     let outfile = BufWriter::with_capacity(
@@ -135,8 +175,8 @@ fn create_gcs<P: AsRef<Path>>(
     status.stage_work("Hashing", n);
     let mut reader = LineReader::new(infile);
     while let Some(line) = reader.next_line() {
-        let line = line.unwrap();
-        if let Some(hash) = u64_from_hex(&line[0..16]) {
+        let line = line?.split(|b| *b == b'\n' || *b == b'\r').next().unwrap();
+        if let Some(hash) = hash.digest(&line) {
             gcs.add(hash);
 
             status.incr();
@@ -158,6 +198,7 @@ fn main() {
         (author: "Thomas Hurst <tom@hur.st>")
         (about: "Golomb Compressed Sets tool -- compact set membership database.")
         (@arg verbose: -v --verbose "Be verbose")
+        (@arg hash: -H --hash +takes_value possible_values(&["hex", "sha1"]) default_value("sha1") "Hash function")
         (@subcommand create =>
             (about: "Create GCS database from file")
             (@arg probability: -p +takes_value default_value("16777216") "False positive rate for queries, 1-in-p.")
@@ -172,6 +213,7 @@ fn main() {
     ).get_matches();
 
     let stderr = &mut std::io::stderr();
+    let hash = value_t!(args.value_of("hash"), HashType).unwrap_or_else(|e| e.exit());
 
     match args.subcommand() {
         ("create", Some(matches)) => {
@@ -182,7 +224,7 @@ fn main() {
             let index_gran =
                 value_t!(matches, "index_granularity", u64).unwrap_or_else(|e| e.exit());
 
-            if let Err(e) = create_gcs(in_filename, out_filename, fp, index_gran) {
+            if let Err(e) = create_gcs(in_filename, out_filename, fp, index_gran, hash) {
                 writeln!(stderr, "Error: {}", e).ok();
 
                 std::process::exit(1);
@@ -191,14 +233,14 @@ fn main() {
         ("query", Some(matches)) => {
             let filename = matches.value_of_os("FILE").unwrap();
 
-            if let Err(e) = query_gcs(filename) {
+            if let Err(e) = query_gcs(filename, hash) {
                 writeln!(stderr, "Error: {}", e).ok();
 
                 std::process::exit(1);
             }
         }
         _ => {
-            panic!("You're not supposed to get here.  Hi.");
+            unreachable!();
         }
     }
 }
