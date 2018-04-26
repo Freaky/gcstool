@@ -8,10 +8,13 @@ use std::str::FromStr;
 use std::time::Instant;
 use std::{thread, time};
 
+extern crate blake2;
 extern crate byteorder;
+extern crate md5;
 extern crate memchr;
 extern crate rayon;
 extern crate sha1;
+extern crate sha2;
 #[macro_use]
 extern crate clap;
 
@@ -25,6 +28,8 @@ use memchr::Memchr;
 mod gcs;
 mod status;
 
+use sha1::Digest;
+
 use gcs::{GCSBuilder, GCSReader};
 use status::Status;
 
@@ -32,6 +37,10 @@ use status::Status;
 pub enum HashType {
     Hex,
     Sha1,
+    Sha2_256,
+    Sha2_512,
+    Md5,
+    Blake2b,
 }
 
 impl FromStr for HashType {
@@ -41,6 +50,10 @@ impl FromStr for HashType {
         match s.to_lowercase().as_ref() {
             "hex" => Ok(HashType::Hex),
             "sha1" => Ok(HashType::Sha1),
+            "sha256" => Ok(HashType::Sha2_256),
+            "sha512" => Ok(HashType::Sha2_512),
+            "md5" => Ok(HashType::Md5),
+            "blake2b" => Ok(HashType::Blake2b),
             _ => Err("no match"),
         }
     }
@@ -56,7 +69,19 @@ impl HashType {
                     u64_from_hex(&s[0..16])
                 }
             }
-            HashType::Sha1 => Cursor::new(sha1::Sha1::from(&s).digest().bytes())
+            HashType::Sha1 => Cursor::new(sha1::Sha1::digest(&s).as_slice())
+                .read_u64::<BigEndian>()
+                .ok(),
+            HashType::Sha2_256 => Cursor::new(sha2::Sha256::digest(&s).as_slice())
+                .read_u64::<BigEndian>()
+                .ok(),
+            HashType::Sha2_512 => Cursor::new(sha2::Sha512::digest(&s).as_slice())
+                .read_u64::<BigEndian>()
+                .ok(),
+            HashType::Md5 => Cursor::new(md5::Md5::digest(&s).as_slice())
+                .read_u64::<BigEndian>()
+                .ok(),
+            HashType::Blake2b => Cursor::new(blake2::Blake2b::digest(&s).as_slice())
                 .read_u64::<BigEndian>()
                 .ok(),
         }
@@ -198,7 +223,7 @@ fn main() {
         (author: "Thomas Hurst <tom@hur.st>")
         (about: "Golomb Compressed Sets tool -- compact set membership database.")
         (@arg verbose: -v --verbose "Be verbose")
-        (@arg hash: -H --hash +takes_value possible_values(&["hex", "sha1"]) default_value("sha1") "Hash function")
+        (@arg hash: -H --hash +takes_value possible_values(&["hex", "sha1", "sha256", "sha512", "md5", "blake2b"]) default_value("sha1") "Hash function")
         (@subcommand create =>
             (about: "Create GCS database from file")
             (@arg probability: -p +takes_value default_value("16777216") "False positive rate for queries, 1-in-p.")
