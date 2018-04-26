@@ -119,7 +119,7 @@ fn u64_from_hex(src: &[u8]) -> Option<u64> {
     Some(result)
 }
 
-fn query_gcs<P: AsRef<Path>>(filename: P, hash: HashType) -> io::Result<()> {
+fn query_gcs<P: AsRef<Path>>(filename: P, hash: &HashType) -> io::Result<()> {
     let file = File::open(filename)?;
     let file = BufReader::new(file);
     let mut searcher = GCSReader::new(file);
@@ -164,7 +164,7 @@ fn create_gcs<P: AsRef<Path>>(
     out_filename: P,
     fp: u64,
     index_gran: u64,
-    hash: HashType,
+    hash: &HashType,
 ) -> io::Result<()> {
     let infile = File::open(in_filename)?;
     let outfile = BufWriter::with_capacity(
@@ -248,7 +248,7 @@ fn main() {
             let index_gran =
                 value_t!(matches, "index_granularity", u64).unwrap_or_else(|e| e.exit());
 
-            if let Err(e) = create_gcs(in_filename, out_filename, fp, index_gran, hash) {
+            if let Err(e) = create_gcs(in_filename, out_filename, fp, index_gran, &hash) {
                 writeln!(stderr, "Error: {}", e).ok();
 
                 std::process::exit(1);
@@ -257,7 +257,7 @@ fn main() {
         ("query", Some(matches)) => {
             let filename = matches.value_of_os("FILE").unwrap();
 
-            if let Err(e) = query_gcs(filename, hash) {
+            if let Err(e) = query_gcs(filename, &hash) {
                 writeln!(stderr, "Error: {}", e).ok();
 
                 std::process::exit(1);
