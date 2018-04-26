@@ -35,10 +35,10 @@ use status::Status;
 #[derive(Debug)]
 pub enum HashType {
     Hex,
+    Md5,
     Sha1,
     Sha2_256,
     Sha2_512,
-    Md5,
     Blake2b,
 }
 
@@ -48,10 +48,10 @@ impl FromStr for HashType {
     fn from_str(s: &str) -> Result<Self, Self::Err> {
         match s.to_lowercase().as_ref() {
             "hex" => Ok(HashType::Hex),
+            "md5" => Ok(HashType::Md5),
             "sha1" => Ok(HashType::Sha1),
             "sha256" => Ok(HashType::Sha2_256),
             "sha512" => Ok(HashType::Sha2_512),
-            "md5" => Ok(HashType::Md5),
             "blake2b" => Ok(HashType::Blake2b),
             _ => Err("no match"),
         }
