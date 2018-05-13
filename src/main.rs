@@ -149,7 +149,7 @@ fn query_gcs<P: AsRef<Path>>(filename: P, hash: &HashType) -> io::Result<()> {
                     + (f64::from(elapsed.subsec_nanos()) / 1_000_000.0)
             );
         } else {
-            println!("Error parsing '{}'", line);
+            eprintln!("Error parsing '{}'", line);
         }
         print!("> ");
         stdout.flush()?;
@@ -205,7 +205,7 @@ fn create_gcs<P: AsRef<Path>>(
 
             status.incr();
         } else {
-            println!("Skipping line: {:?}", line);
+            eprintln!("Skipping line: {:?}", line);
         }
     }
 
@@ -236,7 +236,6 @@ fn main() {
         )
     ).get_matches();
 
-    let stderr = &mut std::io::stderr();
     let hash = value_t!(args.value_of("hash"), HashType).unwrap_or_else(|e| e.exit());
 
     match args.subcommand() {
@@ -249,7 +248,7 @@ fn main() {
                 value_t!(matches, "index_granularity", u64).unwrap_or_else(|e| e.exit());
 
             if let Err(e) = create_gcs(in_filename, out_filename, fp, index_gran, &hash) {
-                writeln!(stderr, "Error: {}", e).ok();
+                eprintln!("Error: {}", e);
 
                 std::process::exit(1);
             }
@@ -258,7 +257,7 @@ fn main() {
             let filename = matches.value_of_os("FILE").unwrap();
 
             if let Err(e) = query_gcs(filename, &hash) {
-                writeln!(stderr, "Error: {}", e).ok();
+                eprintln!("Error: {}", e);
 
                 std::process::exit(1);
             }
