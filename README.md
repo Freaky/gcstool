@@ -29,7 +29,8 @@ only gets you down to 3 GB.
 
 Let's see what this tool can do:
 
-    % gcstool create -p 500000 pwned-passwords-2.0.txt pwned-passwords-2.0-p500k.gcs
+    # Use precomputed hashes directly with -H hex
+    % gcstool -H hex create -p 500000 pwned-passwords-2.0.txt pwned-passwords-2.0-p500k.gcs
     (5 minutes and 3.8 GiB of RAM later)
     % du -h pwned-passwords-2.0-p500k.gcs
     1.2G    pwned-passwords-2.0-p500k.gcs
@@ -42,7 +43,7 @@ Your users deserve better than that, surely.  You could double-check against the
 passwords to a third party and that makes me itch.  What if we could just up the
 error rate so it's negligible?
 
-    % gcstool create -p 50000000 pwned-passwords-2.0.txt pwned-passwords-2.0-p50m.gcs
+    % gcstool -H hex create -p 50000000 pwned-passwords-2.0.txt pwned-passwords-2.0-p50m.gcs
     (5 minutes and 3.8 GiB of RAM later)
     % du -h pwned-passwords-2.0-p50m.gcs
     1.6G    pwned-passwords-2.0-p50m.gcs
