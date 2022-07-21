@@ -11,7 +11,7 @@ data structures that let you test whether a given element is a member of a set.
 
 Like Bloom filters, they have a controllable rate of false-positives - they may
 consider an element a member of a set even if it's never been seen before - while
-having no false negatives.  If a GCS hasn't seen it, it's not on the list.
+having no false negatives.  If it's not on the list, the GCS hasn't seen it.
 
 
 ### Why?
